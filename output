@@ -1,0 +1,353 @@
+
+running 1 test
+
+***new_face: FaceId(1v1) - [VertexId(1v1), VertexId(2v1), VertexId(3v1), VertexId(4v1)]
+
+
+Connecting VertexId(1v1) to VertexId(2v1). Edges:
+	VertexId(1v1): None
+	VertexId(2v1): None
+	No vertices have boundary edges.
+***
+HERE
+***
+Detected face-edge.next to be HalfEdgeId(4294967295v1) from VertexId(1v1) and boundary-edge.next to be HalfEdgeId(4294967295v1) fom VertexId(2v1)
+Created face-edge HalfEdgeId(1v1) with .next = HalfEdgeId(4294967295v1) and boundary-edge HalfEdgeId(2v1) with .next = HalfEdgeId(4294967295v1)
+Updated outgoing edges:
+	VertexId(1v1): Some([HalfEdgeId(1v1)])
+	VertexId(2v1): Some([HalfEdgeId(2v1)])
+
+Connecting VertexId(2v1) to VertexId(3v1). Edges:
+	VertexId(2v1): Some([HalfEdgeId(2v1)])
+	VertexId(3v1): None
+	Only start VertexId(2v1) has boundary edge.
+Detected face-edge.next to be HalfEdgeId(4294967295v1) from VertexId(2v1) and boundary-edge.next to be HalfEdgeId(2v1) fom VertexId(3v1)
+Created face-edge HalfEdgeId(3v1) with .next = HalfEdgeId(4294967295v1) and boundary-edge HalfEdgeId(4v1) with .next = HalfEdgeId(2v1)
+Updated outgoing edges:
+	VertexId(2v1): Some([HalfEdgeId(2v1), HalfEdgeId(3v1)])
+	VertexId(3v1): Some([HalfEdgeId(4v1)])
+Detected previously existing boundary_edge_next: HalfEdgeId(2v1)
+Fixing HalfEdgeId(1v1).next to be HalfEdgeId(3v1)
+
+Connecting VertexId(3v1) to VertexId(4v1). Edges:
+	VertexId(3v1): Some([HalfEdgeId(4v1)])
+	VertexId(4v1): None
+	Only start VertexId(3v1) has boundary edge.
+	 - Loop faces are:edge:HalfEdgeId(2v1) face:None
+Detected face-edge.next to be HalfEdgeId(4294967295v1) from VertexId(3v1) and boundary-edge.next to be HalfEdgeId(4v1) fom VertexId(4v1)
+Created face-edge HalfEdgeId(5v1) with .next = HalfEdgeId(4294967295v1) and boundary-edge HalfEdgeId(6v1) with .next = HalfEdgeId(4v1)
+Updated outgoing edges:
+	VertexId(3v1): Some([HalfEdgeId(4v1), HalfEdgeId(5v1)])
+	VertexId(4v1): Some([HalfEdgeId(6v1)])
+Detected previously existing boundary_edge_next: HalfEdgeId(4v1)
+Fixing HalfEdgeId(3v1).next to be HalfEdgeId(5v1)
+
+Connecting VertexId(4v1) to VertexId(1v1). Edges:
+	VertexId(4v1): Some([HalfEdgeId(6v1)])
+	VertexId(1v1): Some([HalfEdgeId(1v1)])
+	Only start VertexId(4v1) has boundary edge.
+	 - Loop faces are:edge:HalfEdgeId(4v1) face:None
+	 - Loop faces are:edge:HalfEdgeId(2v1) face:None
+	 - Checking HalfEdgeId(1v1).face = Some(FaceId(1v1))
+Detected face-edge.next to be HalfEdgeId(1v1) from VertexId(4v1) and boundary-edge.next to be HalfEdgeId(6v1) fom VertexId(1v1)
+Created face-edge HalfEdgeId(7v1) with .next = HalfEdgeId(1v1) and boundary-edge HalfEdgeId(8v1) with .next = HalfEdgeId(6v1)
+Updated outgoing edges:
+	VertexId(4v1): Some([HalfEdgeId(6v1), HalfEdgeId(7v1)])
+	VertexId(1v1): Some([HalfEdgeId(1v1), HalfEdgeId(8v1)])
+Detected previously existing face_edge_next: HalfEdgeId(1v1)
+Fixing HalfEdgeId(2v1).next to be HalfEdgeId(8v1)
+Detected previously existing boundary_edge_next: HalfEdgeId(6v1)
+Fixing HalfEdgeId(5v1).next to be HalfEdgeId(7v1)
+Mesh:
+	VertexId(1v1) -> HalfEdgeId(1v1)
+	VertexId(2v1) -> HalfEdgeId(3v1)
+	VertexId(3v1) -> HalfEdgeId(5v1)
+	VertexId(4v1) -> HalfEdgeId(7v1)
+	FaceId(1v1) -> HalfEdgeId(7v1)
+	HalfEdgeId(1v1) -> twin:HalfEdgeId(2v1) next:HalfEdgeId(3v1) VertexId(1v1) Some(FaceId(1v1))
+	HalfEdgeId(2v1) -> twin:HalfEdgeId(1v1) next:HalfEdgeId(8v1) VertexId(2v1) None
+	HalfEdgeId(3v1) -> twin:HalfEdgeId(4v1) next:HalfEdgeId(5v1) VertexId(2v1) Some(FaceId(1v1))
+	HalfEdgeId(4v1) -> twin:HalfEdgeId(3v1) next:HalfEdgeId(2v1) VertexId(3v1) None
+	HalfEdgeId(5v1) -> twin:HalfEdgeId(6v1) next:HalfEdgeId(7v1) VertexId(3v1) Some(FaceId(1v1))
+	HalfEdgeId(6v1) -> twin:HalfEdgeId(5v1) next:HalfEdgeId(4v1) VertexId(4v1) None
+	HalfEdgeId(7v1) -> twin:HalfEdgeId(8v1) next:HalfEdgeId(1v1) VertexId(4v1) Some(FaceId(1v1))
+	HalfEdgeId(8v1) -> twin:HalfEdgeId(7v1) next:HalfEdgeId(6v1) VertexId(1v1) None
+
+***new_face: FaceId(2v1) - [VertexId(5v1), VertexId(6v1), VertexId(7v1), VertexId(8v1)]
+
+VertexId(5v1) outgoing_edges are []
+
+Connecting VertexId(5v1) to VertexId(6v1). Edges:
+	VertexId(5v1): None
+	VertexId(6v1): None
+	No vertices have boundary edges.
+***
+HERE
+***
+Detected face-edge.next to be HalfEdgeId(4294967295v1) from VertexId(5v1) and boundary-edge.next to be HalfEdgeId(4294967295v1) fom VertexId(6v1)
+Created face-edge HalfEdgeId(9v1) with .next = HalfEdgeId(4294967295v1) and boundary-edge HalfEdgeId(10v1) with .next = HalfEdgeId(4294967295v1)
+Updated outgoing edges:
+	VertexId(5v1): Some([HalfEdgeId(9v1)])
+	VertexId(6v1): Some([HalfEdgeId(10v1)])
+
+Connecting VertexId(6v1) to VertexId(7v1). Edges:
+	VertexId(6v1): Some([HalfEdgeId(10v1)])
+	VertexId(7v1): None
+	Only start VertexId(6v1) has boundary edge.
+Detected face-edge.next to be HalfEdgeId(4294967295v1) from VertexId(6v1) and boundary-edge.next to be HalfEdgeId(10v1) fom VertexId(7v1)
+Created face-edge HalfEdgeId(11v1) with .next = HalfEdgeId(4294967295v1) and boundary-edge HalfEdgeId(12v1) with .next = HalfEdgeId(10v1)
+Updated outgoing edges:
+	VertexId(6v1): Some([HalfEdgeId(10v1), HalfEdgeId(11v1)])
+	VertexId(7v1): Some([HalfEdgeId(12v1)])
+Detected previously existing boundary_edge_next: HalfEdgeId(10v1)
+Fixing HalfEdgeId(9v1).next to be HalfEdgeId(11v1)
+
+Connecting VertexId(7v1) to VertexId(8v1). Edges:
+	VertexId(7v1): Some([HalfEdgeId(12v1)])
+	VertexId(8v1): None
+	Only start VertexId(7v1) has boundary edge.
+	 - Loop faces are:edge:HalfEdgeId(10v1) face:None
+Detected face-edge.next to be HalfEdgeId(4294967295v1) from VertexId(7v1) and boundary-edge.next to be HalfEdgeId(12v1) fom VertexId(8v1)
+Created face-edge HalfEdgeId(13v1) with .next = HalfEdgeId(4294967295v1) and boundary-edge HalfEdgeId(14v1) with .next = HalfEdgeId(12v1)
+Updated outgoing edges:
+	VertexId(7v1): Some([HalfEdgeId(12v1), HalfEdgeId(13v1)])
+	VertexId(8v1): Some([HalfEdgeId(14v1)])
+Detected previously existing boundary_edge_next: HalfEdgeId(12v1)
+Fixing HalfEdgeId(11v1).next to be HalfEdgeId(13v1)
+
+Connecting VertexId(8v1) to VertexId(5v1). Edges:
+	VertexId(8v1): Some([HalfEdgeId(14v1)])
+	VertexId(5v1): Some([HalfEdgeId(9v1)])
+	Only start VertexId(8v1) has boundary edge.
+	 - Loop faces are:edge:HalfEdgeId(12v1) face:None
+	 - Loop faces are:edge:HalfEdgeId(10v1) face:None
+	 - Checking HalfEdgeId(9v1).face = Some(FaceId(2v1))
+Detected face-edge.next to be HalfEdgeId(9v1) from VertexId(8v1) and boundary-edge.next to be HalfEdgeId(14v1) fom VertexId(5v1)
+Created face-edge HalfEdgeId(15v1) with .next = HalfEdgeId(9v1) and boundary-edge HalfEdgeId(16v1) with .next = HalfEdgeId(14v1)
+Updated outgoing edges:
+	VertexId(8v1): Some([HalfEdgeId(14v1), HalfEdgeId(15v1)])
+	VertexId(5v1): Some([HalfEdgeId(9v1), HalfEdgeId(16v1)])
+Detected previously existing face_edge_next: HalfEdgeId(9v1)
+Fixing HalfEdgeId(10v1).next to be HalfEdgeId(16v1)
+Detected previously existing boundary_edge_next: HalfEdgeId(14v1)
+Fixing HalfEdgeId(13v1).next to be HalfEdgeId(15v1)
+Mesh:
+	VertexId(1v1) -> HalfEdgeId(1v1)
+	VertexId(2v1) -> HalfEdgeId(3v1)
+	VertexId(3v1) -> HalfEdgeId(5v1)
+	VertexId(4v1) -> HalfEdgeId(7v1)
+	VertexId(5v1) -> HalfEdgeId(9v1)
+	VertexId(6v1) -> HalfEdgeId(11v1)
+	VertexId(7v1) -> HalfEdgeId(13v1)
+	VertexId(8v1) -> HalfEdgeId(15v1)
+	FaceId(1v1) -> HalfEdgeId(7v1)
+	FaceId(2v1) -> HalfEdgeId(15v1)
+	HalfEdgeId(1v1) -> twin:HalfEdgeId(2v1) next:HalfEdgeId(3v1) VertexId(1v1) Some(FaceId(1v1))
+	HalfEdgeId(2v1) -> twin:HalfEdgeId(1v1) next:HalfEdgeId(8v1) VertexId(2v1) None
+	HalfEdgeId(3v1) -> twin:HalfEdgeId(4v1) next:HalfEdgeId(5v1) VertexId(2v1) Some(FaceId(1v1))
+	HalfEdgeId(4v1) -> twin:HalfEdgeId(3v1) next:HalfEdgeId(2v1) VertexId(3v1) None
+	HalfEdgeId(5v1) -> twin:HalfEdgeId(6v1) next:HalfEdgeId(7v1) VertexId(3v1) Some(FaceId(1v1))
+	HalfEdgeId(6v1) -> twin:HalfEdgeId(5v1) next:HalfEdgeId(4v1) VertexId(4v1) None
+	HalfEdgeId(7v1) -> twin:HalfEdgeId(8v1) next:HalfEdgeId(1v1) VertexId(4v1) Some(FaceId(1v1))
+	HalfEdgeId(8v1) -> twin:HalfEdgeId(7v1) next:HalfEdgeId(6v1) VertexId(1v1) None
+	HalfEdgeId(9v1) -> twin:HalfEdgeId(10v1) next:HalfEdgeId(11v1) VertexId(5v1) Some(FaceId(2v1))
+	HalfEdgeId(10v1) -> twin:HalfEdgeId(9v1) next:HalfEdgeId(16v1) VertexId(6v1) None
+	HalfEdgeId(11v1) -> twin:HalfEdgeId(12v1) next:HalfEdgeId(13v1) VertexId(6v1) Some(FaceId(2v1))
+	HalfEdgeId(12v1) -> twin:HalfEdgeId(11v1) next:HalfEdgeId(10v1) VertexId(7v1) None
+	HalfEdgeId(13v1) -> twin:HalfEdgeId(14v1) next:HalfEdgeId(15v1) VertexId(7v1) Some(FaceId(2v1))
+	HalfEdgeId(14v1) -> twin:HalfEdgeId(13v1) next:HalfEdgeId(12v1) VertexId(8v1) None
+	HalfEdgeId(15v1) -> twin:HalfEdgeId(16v1) next:HalfEdgeId(9v1) VertexId(8v1) Some(FaceId(2v1))
+	HalfEdgeId(16v1) -> twin:HalfEdgeId(15v1) next:HalfEdgeId(14v1) VertexId(5v1) None
+
+***new_face: FaceId(3v1) - [VertexId(5v1), VertexId(8v1), VertexId(2v1), VertexId(1v1)]
+
+VertexId(5v1) outgoing_edges are [HalfEdgeId(9v1), HalfEdgeId(16v1)]
+
+Connecting VertexId(5v1) to VertexId(8v1). Edges:
+	VertexId(5v1): Some([HalfEdgeId(9v1), HalfEdgeId(16v1)])
+	VertexId(8v1): Some([HalfEdgeId(15v1), HalfEdgeId(14v1)])
+	Both vertices have boundary_edges: VertexId(5v1) has HalfEdgeId(16v1) and VertexId(8v1) has HalfEdgeId(14v1)
+		VertexId(5v1) and VertexId(8v1) are already connected. HalfEdgeId(16v1).next points to HalfEdgeId(14v1)
+
+Connecting VertexId(8v1) to VertexId(2v1). Edges:
+	VertexId(8v1): Some([HalfEdgeId(15v1), HalfEdgeId(14v1)])
+	VertexId(2v1): Some([HalfEdgeId(3v1), HalfEdgeId(2v1)])
+	Both vertices have boundary_edges: VertexId(8v1) has HalfEdgeId(14v1) and VertexId(2v1) has HalfEdgeId(2v1)
+		We are adding last or parallel edge between VertexId(8v1) and VertexId(2v1)
+Detected face-edge.next to be HalfEdgeId(2v1) from VertexId(8v1) and boundary-edge.next to be HalfEdgeId(14v1) fom VertexId(2v1)
+Created face-edge HalfEdgeId(17v1) with .next = HalfEdgeId(2v1) and boundary-edge HalfEdgeId(18v1) with .next = HalfEdgeId(14v1)
+Updated outgoing edges:
+	VertexId(8v1): Some([HalfEdgeId(15v1), HalfEdgeId(14v1), HalfEdgeId(17v1)])
+	VertexId(2v1): Some([HalfEdgeId(3v1), HalfEdgeId(2v1), HalfEdgeId(18v1)])
+Detected previously existing face_edge_next: HalfEdgeId(2v1)
+Fixing HalfEdgeId(4v1).next to be HalfEdgeId(18v1)
+Detected previously existing boundary_edge_next: HalfEdgeId(14v1)
+Fixing HalfEdgeId(16v1).next to be HalfEdgeId(17v1)
+
+Connecting VertexId(2v1) to VertexId(1v1). Edges:
+	VertexId(2v1): Some([HalfEdgeId(3v1), HalfEdgeId(2v1), HalfEdgeId(18v1)])
+	VertexId(1v1): Some([HalfEdgeId(1v1), HalfEdgeId(8v1)])
+	Both vertices have boundary_edges: VertexId(2v1) has HalfEdgeId(2v1) and VertexId(1v1) has HalfEdgeId(8v1)
+		VertexId(2v1) and VertexId(1v1) are already connected. HalfEdgeId(2v1).next points to HalfEdgeId(8v1)
+
+Connecting VertexId(1v1) to VertexId(5v1). Edges:
+	VertexId(1v1): Some([HalfEdgeId(1v1), HalfEdgeId(8v1)])
+	VertexId(5v1): Some([HalfEdgeId(9v1), HalfEdgeId(16v1)])
+	Only start VertexId(1v1) has boundary edge.
+	 - Loop faces are:edge:HalfEdgeId(6v1) face:None
+	 - Loop faces are:edge:HalfEdgeId(4v1) face:None
+	 - Loop faces are:edge:HalfEdgeId(18v1) face:None
+	 - Loop faces are:edge:HalfEdgeId(14v1) face:None
+	 - Loop faces are:edge:HalfEdgeId(12v1) face:None
+	 - Loop faces are:edge:HalfEdgeId(10v1) face:None
+	 - Loop faces are:edge:HalfEdgeId(16v1) face:Some(FaceId(3v1))
+	 - Loop faces are:edge:HalfEdgeId(17v1) face:Some(FaceId(3v1))
+	 - Loop faces are:edge:HalfEdgeId(2v1) face:Some(FaceId(3v1))
+Conditions may be right to patch a face
+Detected face-edge.next to be HalfEdgeId(4294967295v1) from VertexId(1v1) and boundary-edge.next to be HalfEdgeId(8v1) fom VertexId(5v1)
+Created face-edge HalfEdgeId(19v1) with .next = HalfEdgeId(4294967295v1) and boundary-edge HalfEdgeId(20v1) with .next = HalfEdgeId(8v1)
+Updated outgoing edges:
+	VertexId(1v1): Some([HalfEdgeId(1v1), HalfEdgeId(8v1), HalfEdgeId(19v1)])
+	VertexId(5v1): Some([HalfEdgeId(9v1), HalfEdgeId(16v1), HalfEdgeId(20v1)])
+Detected previously existing boundary_edge_next: HalfEdgeId(8v1)
+Fixing HalfEdgeId(2v1).next to be HalfEdgeId(19v1)
+Mesh:
+	VertexId(1v1) -> HalfEdgeId(19v1)
+	VertexId(2v1) -> HalfEdgeId(3v1)
+	VertexId(3v1) -> HalfEdgeId(5v1)
+	VertexId(4v1) -> HalfEdgeId(7v1)
+	VertexId(5v1) -> HalfEdgeId(9v1)
+	VertexId(6v1) -> HalfEdgeId(11v1)
+	VertexId(7v1) -> HalfEdgeId(13v1)
+	VertexId(8v1) -> HalfEdgeId(17v1)
+	FaceId(1v1) -> HalfEdgeId(7v1)
+	FaceId(2v1) -> HalfEdgeId(15v1)
+	FaceId(3v1) -> HalfEdgeId(19v1)
+	HalfEdgeId(1v1) -> twin:HalfEdgeId(2v1) next:HalfEdgeId(3v1) VertexId(1v1) Some(FaceId(1v1))
+	HalfEdgeId(2v1) -> twin:HalfEdgeId(1v1) next:HalfEdgeId(19v1) VertexId(2v1) Some(FaceId(3v1))
+	HalfEdgeId(3v1) -> twin:HalfEdgeId(4v1) next:HalfEdgeId(5v1) VertexId(2v1) Some(FaceId(1v1))
+	HalfEdgeId(4v1) -> twin:HalfEdgeId(3v1) next:HalfEdgeId(18v1) VertexId(3v1) None
+	HalfEdgeId(5v1) -> twin:HalfEdgeId(6v1) next:HalfEdgeId(7v1) VertexId(3v1) Some(FaceId(1v1))
+	HalfEdgeId(6v1) -> twin:HalfEdgeId(5v1) next:HalfEdgeId(4v1) VertexId(4v1) None
+	HalfEdgeId(7v1) -> twin:HalfEdgeId(8v1) next:HalfEdgeId(1v1) VertexId(4v1) Some(FaceId(1v1))
+	HalfEdgeId(8v1) -> twin:HalfEdgeId(7v1) next:HalfEdgeId(6v1) VertexId(1v1) None
+	HalfEdgeId(9v1) -> twin:HalfEdgeId(10v1) next:HalfEdgeId(11v1) VertexId(5v1) Some(FaceId(2v1))
+	HalfEdgeId(10v1) -> twin:HalfEdgeId(9v1) next:HalfEdgeId(16v1) VertexId(6v1) None
+	HalfEdgeId(11v1) -> twin:HalfEdgeId(12v1) next:HalfEdgeId(13v1) VertexId(6v1) Some(FaceId(2v1))
+	HalfEdgeId(12v1) -> twin:HalfEdgeId(11v1) next:HalfEdgeId(10v1) VertexId(7v1) None
+	HalfEdgeId(13v1) -> twin:HalfEdgeId(14v1) next:HalfEdgeId(15v1) VertexId(7v1) Some(FaceId(2v1))
+	HalfEdgeId(14v1) -> twin:HalfEdgeId(13v1) next:HalfEdgeId(12v1) VertexId(8v1) None
+	HalfEdgeId(15v1) -> twin:HalfEdgeId(16v1) next:HalfEdgeId(9v1) VertexId(8v1) Some(FaceId(2v1))
+	HalfEdgeId(16v1) -> twin:HalfEdgeId(15v1) next:HalfEdgeId(17v1) VertexId(5v1) Some(FaceId(3v1))
+	HalfEdgeId(17v1) -> twin:HalfEdgeId(18v1) next:HalfEdgeId(2v1) VertexId(8v1) Some(FaceId(3v1))
+	HalfEdgeId(18v1) -> twin:HalfEdgeId(17v1) next:HalfEdgeId(14v1) VertexId(2v1) None
+	HalfEdgeId(19v1) -> twin:HalfEdgeId(20v1) next:HalfEdgeId(4294967295v1) VertexId(1v1) Some(FaceId(3v1))
+	HalfEdgeId(20v1) -> twin:HalfEdgeId(19v1) next:HalfEdgeId(8v1) VertexId(5v1) None
+
+***new_face: FaceId(4v1) - [VertexId(4v1), VertexId(3v1), VertexId(7v1), VertexId(6v1)]
+
+
+Connecting VertexId(4v1) to VertexId(3v1). Edges:
+	VertexId(4v1): Some([HalfEdgeId(7v1), HalfEdgeId(6v1)])
+	VertexId(3v1): Some([HalfEdgeId(5v1), HalfEdgeId(4v1)])
+	Both vertices have boundary_edges: VertexId(4v1) has HalfEdgeId(6v1) and VertexId(3v1) has HalfEdgeId(4v1)
+		VertexId(4v1) and VertexId(3v1) are already connected. HalfEdgeId(6v1).next points to HalfEdgeId(4v1)
+
+Connecting VertexId(3v1) to VertexId(7v1). Edges:
+	VertexId(3v1): Some([HalfEdgeId(5v1), HalfEdgeId(4v1)])
+	VertexId(7v1): Some([HalfEdgeId(13v1), HalfEdgeId(12v1)])
+	Both vertices have boundary_edges: VertexId(3v1) has HalfEdgeId(4v1) and VertexId(7v1) has HalfEdgeId(12v1)
+		We are adding last or parallel edge between VertexId(3v1) and VertexId(7v1) (reversed).
+Detected face-edge.next to be HalfEdgeId(12v1) from VertexId(3v1) and boundary-edge.next to be HalfEdgeId(4v1) fom VertexId(7v1)
+Created face-edge HalfEdgeId(21v1) with .next = HalfEdgeId(12v1) and boundary-edge HalfEdgeId(22v1) with .next = HalfEdgeId(4v1)
+Updated outgoing edges:
+	VertexId(3v1): Some([HalfEdgeId(5v1), HalfEdgeId(4v1), HalfEdgeId(21v1)])
+	VertexId(7v1): Some([HalfEdgeId(13v1), HalfEdgeId(12v1), HalfEdgeId(22v1)])
+Detected previously existing face_edge_next: HalfEdgeId(12v1)
+Fixing HalfEdgeId(14v1).next to be HalfEdgeId(22v1)
+Detected previously existing boundary_edge_next: HalfEdgeId(4v1)
+Fixing HalfEdgeId(6v1).next to be HalfEdgeId(21v1)
+
+Connecting VertexId(7v1) to VertexId(6v1). Edges:
+	VertexId(7v1): Some([HalfEdgeId(13v1), HalfEdgeId(12v1), HalfEdgeId(22v1)])
+	VertexId(6v1): Some([HalfEdgeId(11v1), HalfEdgeId(10v1)])
+	Both vertices have boundary_edges: VertexId(7v1) has HalfEdgeId(12v1) and VertexId(6v1) has HalfEdgeId(10v1)
+		VertexId(7v1) and VertexId(6v1) are already connected. HalfEdgeId(12v1).next points to HalfEdgeId(10v1)
+
+Connecting VertexId(6v1) to VertexId(4v1). Edges:
+	VertexId(6v1): Some([HalfEdgeId(11v1), HalfEdgeId(10v1)])
+	VertexId(4v1): Some([HalfEdgeId(7v1), HalfEdgeId(6v1)])
+	Only start VertexId(6v1) has boundary edge.
+	 - Loop faces are:edge:HalfEdgeId(16v1) face:Some(FaceId(3v1))
+	 - Loop faces are:edge:HalfEdgeId(17v1) face:Some(FaceId(3v1))
+	 - Loop faces are:edge:HalfEdgeId(2v1) face:Some(FaceId(3v1))
+	 - Loop faces are:edge:HalfEdgeId(19v1) face:Some(FaceId(3v1))
+	 - Checking HalfEdgeId(7v1).face = Some(FaceId(1v1))
+	 - Checking HalfEdgeId(6v1).face = Some(FaceId(4v1))
+Detected face-edge.next to be HalfEdgeId(6v1) from VertexId(6v1) and boundary-edge.next to be HalfEdgeId(10v1) fom VertexId(4v1)
+Created face-edge HalfEdgeId(23v1) with .next = HalfEdgeId(6v1) and boundary-edge HalfEdgeId(24v1) with .next = HalfEdgeId(10v1)
+Updated outgoing edges:
+	VertexId(6v1): Some([HalfEdgeId(11v1), HalfEdgeId(10v1), HalfEdgeId(23v1)])
+	VertexId(4v1): Some([HalfEdgeId(7v1), HalfEdgeId(6v1), HalfEdgeId(24v1)])
+Detected previously existing face_edge_next: HalfEdgeId(6v1)
+Fixing HalfEdgeId(8v1).next to be HalfEdgeId(24v1)
+Detected previously existing boundary_edge_next: HalfEdgeId(10v1)
+Fixing HalfEdgeId(12v1).next to be HalfEdgeId(23v1)
+Mesh:
+	VertexId(1v1) -> HalfEdgeId(19v1)
+	VertexId(2v1) -> HalfEdgeId(3v1)
+	VertexId(3v1) -> HalfEdgeId(21v1)
+	VertexId(4v1) -> HalfEdgeId(7v1)
+	VertexId(5v1) -> HalfEdgeId(9v1)
+	VertexId(6v1) -> HalfEdgeId(23v1)
+	VertexId(7v1) -> HalfEdgeId(13v1)
+	VertexId(8v1) -> HalfEdgeId(17v1)
+	FaceId(1v1) -> HalfEdgeId(7v1)
+	FaceId(2v1) -> HalfEdgeId(15v1)
+	FaceId(3v1) -> HalfEdgeId(19v1)
+	FaceId(4v1) -> HalfEdgeId(23v1)
+	HalfEdgeId(1v1) -> twin:HalfEdgeId(2v1) next:HalfEdgeId(3v1) VertexId(1v1) Some(FaceId(1v1))
+	HalfEdgeId(2v1) -> twin:HalfEdgeId(1v1) next:HalfEdgeId(19v1) VertexId(2v1) Some(FaceId(3v1))
+	HalfEdgeId(3v1) -> twin:HalfEdgeId(4v1) next:HalfEdgeId(5v1) VertexId(2v1) Some(FaceId(1v1))
+	HalfEdgeId(4v1) -> twin:HalfEdgeId(3v1) next:HalfEdgeId(18v1) VertexId(3v1) None
+	HalfEdgeId(5v1) -> twin:HalfEdgeId(6v1) next:HalfEdgeId(7v1) VertexId(3v1) Some(FaceId(1v1))
+	HalfEdgeId(6v1) -> twin:HalfEdgeId(5v1) next:HalfEdgeId(21v1) VertexId(4v1) Some(FaceId(4v1))
+	HalfEdgeId(7v1) -> twin:HalfEdgeId(8v1) next:HalfEdgeId(1v1) VertexId(4v1) Some(FaceId(1v1))
+	HalfEdgeId(8v1) -> twin:HalfEdgeId(7v1) next:HalfEdgeId(24v1) VertexId(1v1) None
+	HalfEdgeId(9v1) -> twin:HalfEdgeId(10v1) next:HalfEdgeId(11v1) VertexId(5v1) Some(FaceId(2v1))
+	HalfEdgeId(10v1) -> twin:HalfEdgeId(9v1) next:HalfEdgeId(16v1) VertexId(6v1) None
+	HalfEdgeId(11v1) -> twin:HalfEdgeId(12v1) next:HalfEdgeId(13v1) VertexId(6v1) Some(FaceId(2v1))
+	HalfEdgeId(12v1) -> twin:HalfEdgeId(11v1) next:HalfEdgeId(23v1) VertexId(7v1) Some(FaceId(4v1))
+	HalfEdgeId(13v1) -> twin:HalfEdgeId(14v1) next:HalfEdgeId(15v1) VertexId(7v1) Some(FaceId(2v1))
+	HalfEdgeId(14v1) -> twin:HalfEdgeId(13v1) next:HalfEdgeId(22v1) VertexId(8v1) None
+	HalfEdgeId(15v1) -> twin:HalfEdgeId(16v1) next:HalfEdgeId(9v1) VertexId(8v1) Some(FaceId(2v1))
+	HalfEdgeId(16v1) -> twin:HalfEdgeId(15v1) next:HalfEdgeId(17v1) VertexId(5v1) Some(FaceId(3v1))
+	HalfEdgeId(17v1) -> twin:HalfEdgeId(18v1) next:HalfEdgeId(2v1) VertexId(8v1) Some(FaceId(3v1))
+	HalfEdgeId(18v1) -> twin:HalfEdgeId(17v1) next:HalfEdgeId(14v1) VertexId(2v1) None
+	HalfEdgeId(19v1) -> twin:HalfEdgeId(20v1) next:HalfEdgeId(4294967295v1) VertexId(1v1) Some(FaceId(3v1))
+	HalfEdgeId(20v1) -> twin:HalfEdgeId(19v1) next:HalfEdgeId(8v1) VertexId(5v1) None
+	HalfEdgeId(21v1) -> twin:HalfEdgeId(22v1) next:HalfEdgeId(12v1) VertexId(3v1) Some(FaceId(4v1))
+	HalfEdgeId(22v1) -> twin:HalfEdgeId(21v1) next:HalfEdgeId(4v1) VertexId(7v1) None
+	HalfEdgeId(23v1) -> twin:HalfEdgeId(24v1) next:HalfEdgeId(6v1) VertexId(6v1) Some(FaceId(4v1))
+	HalfEdgeId(24v1) -> twin:HalfEdgeId(23v1) next:HalfEdgeId(10v1) VertexId(4v1) None
+
+***new_face: FaceId(5v1) - [VertexId(6v1), VertexId(5v1), VertexId(1v1), VertexId(4v1)]
+
+VertexId(5v1) outgoing_edges are [HalfEdgeId(9v1), HalfEdgeId(16v1)]
+
+Connecting VertexId(6v1) to VertexId(5v1). Edges:
+	VertexId(6v1): Some([HalfEdgeId(23v1), HalfEdgeId(10v1), HalfEdgeId(11v1)])
+	VertexId(5v1): Some([HalfEdgeId(9v1), HalfEdgeId(16v1)])
+	Only start VertexId(6v1) has boundary edge.
+	 - Loop faces are:edge:HalfEdgeId(16v1) face:Some(FaceId(3v1))
+	 - Loop faces are:edge:HalfEdgeId(17v1) face:Some(FaceId(3v1))
+	 - Loop faces are:edge:HalfEdgeId(2v1) face:Some(FaceId(3v1))
+	 - Loop faces are:edge:HalfEdgeId(19v1) face:Some(FaceId(3v1))
+	 - Checking HalfEdgeId(9v1).face = Some(FaceId(2v1))
+	 - Checking HalfEdgeId(16v1).face = Some(FaceId(3v1))
+Detected face-edge.next to be HalfEdgeId(4294967295v1) from VertexId(6v1) and boundary-edge.next to be HalfEdgeId(10v1) fom VertexId(5v1)
+Created face-edge HalfEdgeId(25v1) with .next = HalfEdgeId(4294967295v1) and boundary-edge HalfEdgeId(26v1) with .next = HalfEdgeId(10v1)
+Updated outgoing edges:
+	VertexId(6v1): Some([HalfEdgeId(23v1), HalfEdgeId(10v1), HalfEdgeId(11v1), HalfEdgeId(25v1)])
+	VertexId(5v1): Some([HalfEdgeId(9v1), HalfEdgeId(16v1), HalfEdgeId(26v1)])
+Detected previously existing boundary_edge_next: HalfEdgeId(10v1)
