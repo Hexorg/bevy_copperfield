@@ -4,7 +4,7 @@ use super::{Face, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
 
 /// Removes a vertex, either making a mesh boundary, or filling it up with a new face
 pub fn delete(mesh:&mut HalfEdgeMesh, face:FaceId) {
-    let r#loop:StackVec<_> = mesh.goto(face).iter_loop().map(|t| t.get_halfedge().unwrap()).collect();
+    let r#loop:StackVec<_> = mesh.goto(face).iter_loop().map(|t| *t).collect();
     for edge in r#loop {
         mesh[edge].face = None
     }
@@ -16,7 +16,9 @@ pub fn delete(mesh:&mut HalfEdgeMesh, face:FaceId) {
 /// Returned new HalfEdgeId will be the newly created edge `v -> w` 
 pub fn split(mesh:&mut HalfEdgeMesh, v:VertexId, w:VertexId) -> HalfEdgeId {
     let v = mesh.goto(v);
-    v.halfedge_to(w).get_halfedge().expect_err("Vertices provided to split a face already share an edge");
+    if v.find_halfedge_to(w).is_some() {
+        panic!("Vertices {v:?} and {w:?} provided to split a face already share an edge");
+    }
     //twin_vertex(w) /twin_previous
     //  __________./  twin_next
     //  edge_next  \twin /
@@ -25,12 +27,12 @@ pub fn split(mesh:&mut HalfEdgeMesh, v:VertexId, w:VertexId) -> HalfEdgeId {
     //              /   \
     //edge_previous/     \
     let twin_next = v.adjacent_faces().find(|p| p.iter_loop().contains(w)).expect("Vertices provided to split a face must share a face.");
-    let face = twin_next.get_face().unwrap().expect("Vertices provided to split a face are boundary and don't have a face.");
-    let edge_previous = twin_next.previous().get_halfedge().unwrap();
-    let edge_next = twin_next.iter_loop().find(|t| t.get_vertex().unwrap() == w).unwrap();
-    let edge_next = edge_next.get_halfedge().unwrap();
-    let v = v.get_vertex().unwrap();
-    let (edge, mut twin) = mesh.new_edge(edge_previous.into(), edge_next.into());
+    let face = twin_next.face().unwrap();
+    let edge_previous = twin_next.previous();
+    let edge_next = twin_next.iter_loop().find(|t| t.vertex() == w).unwrap();
+    let edge_next = edge_next;
+    let v = v.vertex();
+    let (edge, mut twin) = mesh.attach_edge(*edge_previous, *edge_next);
 
     let face_id = mesh.faces.insert(Face { halfedge: twin });
 
@@ -49,21 +51,27 @@ pub fn split(mesh:&mut HalfEdgeMesh, v:VertexId, w:VertexId) -> HalfEdgeId {
 
 pub fn extrude(mesh:&mut HalfEdgeMesh, face:FaceId, length:f32) -> StackVec<FaceId> {
     let shift = length*mesh.face_normal(face);
-    let face_edges = mesh.goto(face).iter_loop().map(|e| (e.get_halfedge().unwrap(), e.get_vertex().unwrap())).collect::<StackVec<_>>();
+    let face_edges = mesh.goto(face).iter_loop().map(|e| (*e, e.vertex())).collect::<StackVec<_>>();
+    for edge in &face_edges {
+        // Remove the face from edges so that we don't temporarily create a non-manifold mesh
+        mesh[edge.0].face = None;
+        // we will re-use the face_id to fill in the extruded face
+    }
     let new_verts = (0..face_edges.len()).map(|_| mesh.new_vertex()).collect::<StackVec<_>>();
     let v = new_verts[0]; // Save a new vertex to find its boundary edge later
+    println!("\n**EXTRUDE**\n");
     let new_faces = face_edges.into_iter().zip(new_verts).circular_tuple_windows().map(|(((edge, v1), v2), ((_, v3), v4))| {
-        mesh[edge].face = None;
         // We don't have remove us from next edge ahead because mesh.new_face doesn't modify or depend on twin edges
         let positions = mesh.attributes.get_mut(&super::attributes::AttributeKind::Positions).unwrap().as_vertices_vec3_mut();
         positions.insert(v2, positions[v1]+shift);
         mesh.new_face(&[v3, v4, v2, v1])
     }).collect::<StackVec<_>>();
-    let old_face_goes_here = mesh.goto(v).iter_outgoing().find(|e| e.is_boundary()).unwrap().iter_loop().map(|e| e.get_halfedge().unwrap()).collect::<StackVec<_>>();
-    mesh[face].halfedge = old_face_goes_here[0];
-    for edge in old_face_goes_here {
-        mesh[edge].face = Some(face);
-    }
+    mesh.print_mesh();
+    // let old_face_goes_here = mesh.goto(v).iter_outgoing().find(|e| e.face().is_none()).unwrap().iter_loop().map(|e| *e).collect::<StackVec<_>>();
+    // mesh[face].halfedge = old_face_goes_here[0];
+    // for edge in old_face_goes_here {
+    //     mesh[edge].face = Some(face);
+    // }
     new_faces
     
 }
@@ -73,11 +81,11 @@ pub fn extrude(mesh:&mut HalfEdgeMesh, face:FaceId, length:f32) -> StackVec<Face
 
 #[cfg(test)]
 mod tests {
-    use bevy::math::Vec3;
-    use slotmap::{KeyData, SecondaryMap};
+    
+    use slotmap::KeyData;
     use smallvec::SmallVec;
 
-    use crate::mesh::{attributes::AttributeKind, tests::sample_mesh, vertex_ops, FaceId, VertexId};
+    use crate::mesh::{tests::sample_mesh, vertex_ops, FaceId, VertexId};
 
 
     #[test]
@@ -111,13 +119,6 @@ mod tests {
     fn test_extrude() {
         let mut mesh = sample_mesh();
         let v = mesh.vertex_keys().collect::<SmallVec<[_;9]>>();
-        // Pyramid shape with v[2] on top
-        let positions = SecondaryMap::from_iter([
-            (v[0], -Vec3::X-Vec3::Z), (v[3], -Vec3::Z+0.5*Vec3::Y), (v[5], Vec3::X-Vec3::Z),
-            (v[1], -Vec3::X+0.5*Vec3::Y), (v[2], Vec3::Y), (v[4], Vec3::X+0.5*Vec3::Y),
-            (v[6], -Vec3::X+Vec3::Z), (v[7], Vec3::Z+0.5*Vec3::Y), (v[8], Vec3::X+Vec3::Z),
-        ]);
-        mesh.add_attribute(AttributeKind::Positions, positions);
         let face = vertex_ops::chamfer(&mut mesh, v[2], 0.25);
         super::extrude(&mut mesh, face, 0.5);
         assert_eq!(mesh.count_islands(), 1);

@@ -5,7 +5,9 @@ use smallvec::SmallVec;
 
 use crate::mesh::vertex_ops;
 
-use super::{attributes::AttributeKind, FaceId, face_ops, HalfEdge, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
+use super::{attributes::{AttributeKind, AttributeQueries}, face_ops, FaceId, HalfEdge, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
+
+
 
 /// Remove an edge, either making a mesh boundary
 pub fn delete(mesh:&mut HalfEdgeMesh, target:HalfEdgeId, is_fill:bool) -> Option<FaceId> { 
@@ -17,18 +19,18 @@ pub fn delete(mesh:&mut HalfEdgeMesh, target:HalfEdgeId, is_fill:bool) -> Option
     //              /   \
     //edge_previous/     \
     let edge = mesh.goto(target);
-    let edge_next = edge.next().get_halfedge().unwrap();
-    let edge_previous = edge.previous().get_halfedge().unwrap();
-    let edge_face = edge.get_face().unwrap();
-    let edge_vertex = edge.get_vertex().unwrap();
+    let edge_next = *edge.next();
+    let edge_previous = *edge.previous();
+    let edge_face = edge.face();
+    let edge_vertex = edge.vertex();
 
     let twin = edge.twin();
-    let edge = edge.get_halfedge().unwrap();
-    let twin_next = twin.next().get_halfedge().unwrap();
-    let twin_previous = twin.previous().get_halfedge().unwrap();
-    let twin_face = twin.get_face().unwrap();
-    let twin_vertex = twin.get_vertex().unwrap();
-    let twin = twin.get_halfedge().unwrap();
+    let edge = *edge;
+    let twin_next = *twin.next();
+    let twin_previous = *twin.previous();
+    let twin_face = twin.face();
+    let twin_vertex = twin.vertex();
+    let twin = *twin;
 
     // Reconnect the mesh to bypass removed edge+twin
     mesh[twin_previous].next = edge_next;
@@ -38,7 +40,7 @@ pub fn delete(mesh:&mut HalfEdgeMesh, target:HalfEdgeId, is_fill:bool) -> Option
     mesh.halfedges.remove(target);
     mesh.halfedges.remove(twin);
 
-    let face_edges:StackVec<_> = mesh.goto(edge_next).iter_loop().map(|t| t.get_halfedge().unwrap()).collect();
+    let face_edges:StackVec<_> = mesh.goto(edge_next).iter_loop().map(|t| *t).collect();
     for edge in face_edges {
         mesh[edge].face = if is_fill { edge_face } else { None }
     }
@@ -75,15 +77,15 @@ pub fn split(mesh:&mut HalfEdgeMesh, target:HalfEdgeId, factor:f32) -> VertexId 
     //              /   \
     //edge_previous/     \
     let edge = mesh.goto(target);
-    let edge_next = edge.next().get_halfedge().unwrap();
-    let edge_face = edge.get_face().unwrap();
-    let start_pos = edge.get_vertex_position().unwrap();    
+    let edge_next = *edge.next();
+    let edge_face = edge.face();
+    let start_pos = edge.position();    
     let twin = edge.twin();
-    let twin_previous = twin.previous().get_halfedge().unwrap();
-    let twin_face = twin.get_face().unwrap();
-    let twin_vertex = twin.get_vertex().unwrap();
-    let end_pos = twin.get_vertex_position().unwrap();
-    let twin = twin.get_halfedge().unwrap();
+    let twin_previous = *twin.previous();
+    let twin_face = twin.face();
+    let twin_vertex = twin.vertex();
+    let end_pos = twin.position();
+    let twin = *twin;
     
     let new_vertex_pos = start_pos.lerp(end_pos, factor);
     let new_vertex = mesh.new_vertex();
@@ -104,41 +106,26 @@ pub fn split(mesh:&mut HalfEdgeMesh, target:HalfEdgeId, factor:f32) -> VertexId 
 
 pub fn chamfer(mesh:&mut HalfEdgeMesh, target:HalfEdgeId, factor:f32) -> FaceId {
 
-    let start_vertex = mesh.goto(target).get_vertex().unwrap();
-    let end_vertex = mesh.goto(target).twin().get_vertex().unwrap();
-    let twin = mesh.goto(target).twin().get_halfedge().unwrap();
+    let start_vertex = mesh.goto(target).vertex();
+    let end_vertex = mesh.goto(target).twin().vertex();
+    let twin = *mesh.goto(target).twin();
 
-    let start_outgoing_edges = mesh.goto(start_vertex).iter_outgoing().map(|e| e.get_halfedge().unwrap()).collect::<StackVec<_>>();
-    // Split on the target halfedge, making all cut_vertices flow together - makese face cutting easier
-    let mut start_split = start_outgoing_edges.split(|e| e == &target);
-    let mut cut_vertices = start_split.next().unwrap().iter().map(|e| split(mesh, *e, factor)).collect::<SmallVec<[_;16]>>();
-    let mut start_vertex_chamfer_vertices = cut_vertices.clone();
-
-    let mut edge_chamfer_vertices = StackVec::new();
-    if let Some(last) = start_vertex_chamfer_vertices.last() {
-        edge_chamfer_vertices.push(*last)
-    }
-
-    let end_outgoing_edges = mesh.goto(end_vertex).iter_outgoing().filter(|e| e.get_position() != twin.into()).map(|e| e.get_halfedge().unwrap()).collect::<StackVec<_>>();
-    
-    let mut end_vertex_chamfer_vertices = end_outgoing_edges.iter().map(|e| split(mesh, *e, factor)).collect::<StackVec<_>>();
-    edge_chamfer_vertices.push(end_vertex_chamfer_vertices[0]);
-    edge_chamfer_vertices.push(*end_vertex_chamfer_vertices.last().unwrap());
-    cut_vertices.extend(end_vertex_chamfer_vertices.iter().copied());
-    let leftover = start_split.next().unwrap().iter().map(|e| split(mesh, *e, factor)).collect::<StackVec<_>>();
-    edge_chamfer_vertices.push(leftover[0]);
-    start_vertex_chamfer_vertices.extend(leftover.iter().copied());
-    cut_vertices.extend(leftover);
-    start_vertex_chamfer_vertices.reverse();
-    end_vertex_chamfer_vertices.reverse();
-    edge_chamfer_vertices.reverse();
-    let new_edges = cut_vertices.iter().circular_tuple_windows().map(|(&start, &end)| face_ops::split(mesh, start, end)).collect::<SmallVec<[_;16]>>();
-    
+    let start_outgoing_edges = mesh.goto(target).iter_outgoing().skip(1).map(|e| *e).collect::<StackVec<_>>();
+    let end_outgoing_edges = mesh.goto(twin).twin().next().iter_outgoing().filter(|&e| *e != twin).map(|e| *e).collect::<StackVec<_>>();
+    // We need to cut all start and end outgoing edges except the target/twin and then join all new vertex pairs.
+    let mut cut_vertices = start_outgoing_edges.iter().chain(end_outgoing_edges.iter()).copied().collect::<SmallVec<[_;16]>>().iter().map(|e| split(mesh, *e, factor)).collect::<SmallVec<[_;16]>>();
+    cut_vertices.reverse();
+    println!("start_outgoing: {start_outgoing_edges:?} end_outgoing: {end_outgoing_edges:?}");
+    cut_vertices.iter().circular_tuple_windows().map(|(&start, &end)| face_ops::split(mesh, start, end)).count();
+    // panic!("Aaaah!");
     vertex_ops::delete(mesh, start_vertex, false);
     vertex_ops::delete(mesh, end_vertex, false);
-    mesh.new_face(&start_vertex_chamfer_vertices);
-    mesh.new_face(&end_vertex_chamfer_vertices);
-    mesh.new_face(&edge_chamfer_vertices);
+    let edge_face_sides = start_outgoing_edges.len();
+    mesh.new_face(&cut_vertices[..edge_face_sides]);
+    mesh.new_face(&cut_vertices[edge_face_sides..]);
+    let last_face = [cut_vertices[0], cut_vertices[edge_face_sides-1],  cut_vertices[edge_face_sides], cut_vertices[cut_vertices.len()-1]];
+    println!("Last_face: {last_face:?}");
+    mesh.new_face(&last_face);
 
     default()
 }
@@ -160,7 +147,7 @@ mod tests {
         let to_be_deleted = mesh.new_face(&[vertices[0], vertices[1], vertices[2], vertices[3]]);
         mesh.new_face(&[vertices[1], vertices[4], vertices[5], vertices[2]]);
 
-        let target = mesh.goto(vertices[2]).halfedge_to(vertices[1]).get_halfedge().unwrap();
+        let target = *mesh.goto(vertices[2]).halfedge_to(vertices[1]);
         let deleted_face = super::delete(&mut mesh, target, true);
         assert_eq!(mesh.count_face_edges(), 6);
         assert_eq!(mesh.count_islands(), 1);

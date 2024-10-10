@@ -1,15 +1,45 @@
 use core::f32;
 
-use bevy_copperfield::{mesh::{attributes::AttributeKind, edge_ops, face_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec}, mesh_builders::HalfEdgeMeshBuilder};
+use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeQueries}, edge_ops, face_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec}, mesh_builders::HalfEdgeMeshBuilder};
 use camera_controls::{capture_mouse, FlyingCamera};
 use slotmap::{SecondaryMap};
 use smallvec::SmallVec;
-use bevy::{color, math::VectorSpace, prelude::*, render::view::screenshot::ScreenshotManager, window::PrimaryWindow};
+use bevy::{color, math::VectorSpace, prelude::*, render::{camera::ScalingMode, view::screenshot::ScreenshotManager}, window::PrimaryWindow};
+
+pub fn cuboid_tests() -> HalfEdgeMesh {
+    
+    let mut mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
+    let faces = mesh.face_keys().collect::<StackVec<_>>();
+    let face = faces[2];
+    face_ops::extrude(&mut mesh, face, 1.0);
+    let middle_halfedge = mesh.goto(face).twin().next();
+    // let middle_vertex = middle_/halfedge.get_vertex().unwrap();
+
+    let middle_halfedge = *middle_halfedge.twin();
+    face_ops::extrude(&mut mesh, face, 1.0);
+    println!("{middle_halfedge:?}");
+    edge_ops::chamfer(&mut mesh, middle_halfedge, 0.25);
+    mesh
+}
+
+pub fn sample_mesh_tests() -> HalfEdgeMesh {
+    let mut mesh = sample_mesh();
+    let v = mesh.vertex_keys().collect::<SmallVec<[_;9]>>();
+    let face = vertex_ops::chamfer(&mut mesh, v[2], 0.25);
+    // face_ops::extrude(&mut mesh, face, 0.5);
+    mesh
+}
+
+pub fn build_mesh() -> HalfEdgeMesh {   
+    // cuboid_tests()
+    sample_mesh_tests()
+}
+
 
 pub mod camera_controls {
     use core::f32;
 
-    use bevy::{input::mouse::{MouseMotion, MouseWheel}, prelude::*, window::{CursorGrabMode, PrimaryWindow}};
+    use bevy::{input::mouse::{MouseMotion, MouseWheel}, prelude::*, render::camera::ScalingMode, window::{CursorGrabMode, PrimaryWindow}};
 
     #[derive(Component, Default)]
     pub struct FlyingCamera{
@@ -43,15 +73,24 @@ pub mod camera_controls {
         let down = keyboard.pressed(KeyCode::ControlLeft);
         let escape = keyboard.just_pressed(KeyCode::Escape);
         let zero = keyboard.just_pressed(KeyCode::Digit0);
+        let change_projection = keyboard.just_pressed(KeyCode::Tab);
     
         for (mut transform, mut looking_at,projection) in &mut transform_query {
             let p = projection.into_inner();
             for ev in scroll_evr.read() {
-                if let Projection::Orthographic(orthographic_projection) = p {
-                    orthographic_projection.scale += ev.y*match ev.unit {
-                        bevy::input::mouse::MouseScrollUnit::Line => 0.03,
-                        bevy::input::mouse::MouseScrollUnit::Pixel => 0.01,
-                    }
+                let change_value = ev.y*match ev.unit {
+                    bevy::input::mouse::MouseScrollUnit::Line => 0.03,
+                    bevy::input::mouse::MouseScrollUnit::Pixel => 0.01,
+                };
+                match p {
+                    Projection::Orthographic(orthographic_projection) => orthographic_projection.scale += change_value,
+                    Projection::Perspective(perspective_projection) => perspective_projection.fov += change_value,
+                }
+            }
+            if change_projection {
+                match p {
+                    Projection::Perspective(_) => *p = Projection::Orthographic(OrthographicProjection{scaling_mode:ScalingMode::WindowSize(300.0), ..default()}),
+                    Projection::Orthographic(_) => *p = Projection::Perspective(default()),
                 }
             }
             for ev in motion_evr.read() {
@@ -84,7 +123,7 @@ pub mod camera_controls {
                 transform.translation += time.delta_seconds()*CAMERA_SPEED*shift;
             }
             if zero {
-                transform.translation = 10.0*Vec3::Y;
+                transform.translation = 3.0*Vec3::Y;
             }
             
         }
@@ -101,6 +140,9 @@ struct DebugMesh(HalfEdgeMesh);
 #[derive(Component, Copy, Clone, Deref)]
 struct HalfMeshLabelKey(MeshPosition);
 
+#[derive(Component)]
+struct HelpText;
+
 const VERTEX_COLOR:Srgba = color::palettes::basic::WHITE;
 const EDGE_COLOR:Srgba = color::palettes::basic::AQUA;
 const RIB_COLOR:Srgba = color::palettes::basic::BLACK;
@@ -111,6 +153,13 @@ pub enum GizmoState{
     #[default]
     Draw,
     NoDraw,
+}
+
+#[derive(States, Debug, Hash, Default, PartialEq, Eq, Clone, Copy)]
+pub enum ScreenshotState{
+    #[default]
+    NotTakingScreenshot,
+    ReadyForScreenshot
 }
 /// set up a simple 3D scene
 fn setup(
@@ -137,9 +186,21 @@ fn setup(
     // camera
     commands.spawn((FlyingCamera{pitch:-0.5*f32::consts::PI, yaw:0.0}, Camera3dBundle {
         transform: Transform::from_xyz(0.0, 3.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
-        projection:Projection::Orthographic(OrthographicProjection { near: 0.1, far: 10.0, scaling_mode: bevy::render::camera::ScalingMode::WindowSize(300.0), scale: 1.0, ..default() }),
+        projection:Projection::Orthographic(OrthographicProjection { near: 0.1, far: 10.0, scaling_mode: ScalingMode::WindowSize(300.0), scale: 1.0, ..default() }),
         ..default()
     }));
+
+    commands.spawn((HelpText, TextBundle{text:Text::from_sections(vec![
+        TextSection{value:"Controls\n".into(),..default()},
+        TextSection{value:"W,A,S,D,Ctrl,Shift - move; Mouse movement - look around\n".into(),..default()},
+        TextSection{value:"Mouse wheel: Zoom\n".into(),..default()},
+        TextSection{value:"Escape: Exit\n".into(),..default()},
+        TextSection{value:"Digit 0: Reset view\n".into(),..default()},
+        TextSection{value:"Backslash: Toggle gizmos on/off\n".into(),..default()},
+        TextSection{value:"Tab: Toggle projection\n".into(),..default()},
+        TextSection{value:"Enter: Take Screenshot\n".into(),..default()},
+        TextSection{value:"Space: Apply Mesh mod function\n".into(),..default()},
+    ]),..default()}));
 
     for vertex in debug_mesh.vertex_keys() {
         commands.spawn((HalfMeshLabelKey(vertex.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", vertex)[8..]), TextStyle {color: VERTEX_COLOR.into(), ..default() }), style:Style{position_type:PositionType::Absolute,..default()}, ..default()}));
@@ -162,14 +223,15 @@ fn draw_origin_gizmos(mut gizmos:Gizmos) {
 fn draw_vertex_gizmos(mesh:Res<DebugMesh>, mut gizmos:Gizmos) {
     let positions = mesh.attribute(&AttributeKind::Positions).unwrap().as_vertices_vec3();
     for vertex in mesh.vertex_keys() {
-        let pos = positions[vertex];
-        gizmos.sphere(pos, Quat::IDENTITY, 0.01, VERTEX_COLOR);
+        if let Some(&pos) = positions.get(vertex) {
+            gizmos.sphere(pos, Quat::IDENTITY, 0.01, VERTEX_COLOR);
+        }
     }
 }
 
 fn get_face_center_pos(edge:HalfEdgeId, mesh:&HalfEdgeMesh) -> Vec3 {
     let edge = mesh.goto(edge);
-    let (sum, count) = edge.face().iter_loop().fold((Vec3::ZERO, 0.0_f32), |acc, v| (acc.0 + v.get_vertex_position().unwrap(), acc.1 + 1.0));
+    let (sum, count) = edge.iter_loop().fold((Vec3::ZERO, 0.0_f32), |acc, v| (acc.0 + v.position(), acc.1 + 1.0));
     sum / count
 }
 
@@ -177,15 +239,15 @@ fn get_edge_pos(edge:HalfEdgeId, mesh:&HalfEdgeMesh) -> (Vec3, Vec3) {
     const LENGTH:f32 = 0.25;
     const OFFSET:f32 = 0.1;
     let edge = mesh.goto(edge);
-    let start = edge.get_vertex_position().unwrap();
-    let to = edge.twin().get_vertex_position().unwrap();
+    let start = edge.position();
+    let to = edge.twin().position();
     let distance_to_end = to-start;
     let direction = distance_to_end.normalize();
     let distance_to_end = distance_to_end.length();
-    let shift = OFFSET*if !edge.is_boundary() {
-        get_face_center_pos(edge.get_halfedge().unwrap(), mesh) - start //+ mesh.face_normal(edge.get_face().unwrap().unwrap())
+    let shift = OFFSET*if edge.face().is_some() {
+        get_face_center_pos(*edge, mesh) - start //+ mesh.face_normal(edge.get_face().unwrap().unwrap())
     } else {
-        start - get_face_center_pos(edge.twin().get_halfedge().unwrap(), mesh)
+        start - get_face_center_pos(*edge.twin(), mesh)
     }.normalize();
     // let  end = start.lerp(to, LENGTH);
     (start+shift, start+shift+LENGTH*distance_to_end*direction)
@@ -195,8 +257,8 @@ fn draw_edge_gizmos(mesh:Res<DebugMesh>, mut gizmos:Gizmos) {
     for edge in mesh.edge_keys() {
         let (start, end) = get_edge_pos(edge, &mesh.0);
         gizmos.arrow(start, end, EDGE_COLOR);
-        let start = mesh.goto(edge).get_vertex_position().unwrap();
-        let end = mesh.goto(edge).twin().get_vertex_position().unwrap();
+        let start = mesh.goto(edge).position();
+        let end = mesh.goto(edge).twin().position();
         gizmos.line(start, end, RIB_COLOR);
     }
 }
@@ -206,20 +268,16 @@ fn move_labels_to_with_camera(mut transform:Query<(&mut Style, &HalfMeshLabelKey
     camera:Query<(&GlobalTransform, &Camera)>, 
     mesh:Res<DebugMesh>) {
     let (camera_transform, camera) = camera.single();
-    // let window = window.single();
-    // let width = window.width();
-    // let height = window.height();
     for (mut t, &key) in &mut transform {
         if state.get() == &GizmoState::Draw {
             let pos = match key.0 {
-                MeshPosition::Vertex(vertex_id) => mesh.goto(vertex_id).get_vertex_position().unwrap(),
+                MeshPosition::Vertex(vertex_id) => mesh.goto(vertex_id).position(),
                 MeshPosition::HalfEdge(half_edge_id) => get_edge_pos(half_edge_id, &mesh.0).1,
-                MeshPosition::Face(face_id) => get_face_center_pos(mesh.goto(face_id).get_halfedge().unwrap(), &mesh.0),
+                MeshPosition::Face(face_id) => get_face_center_pos(*mesh.goto(face_id), &mesh.0),
             };
             if let Some(viewport_pos) = camera.world_to_viewport(camera_transform, pos) {
                 t.top = Val::Px(viewport_pos.y);
                 t.left = Val::Px(viewport_pos.x);
-    
             }
         } else {
             t.top = Val::Px(-10.0);
@@ -228,18 +286,31 @@ fn move_labels_to_with_camera(mut transform:Query<(&mut Style, &HalfMeshLabelKey
     }
 }
 
-fn screenshot_on_enter(
-    input: Res<ButtonInput<KeyCode>>,
+
+fn take_screenshot(
     main_window: Query<Entity, With<PrimaryWindow>>,
     mut screenshot_manager: ResMut<ScreenshotManager>,
     mut counter: Local<u32>,
+    mut next_state:ResMut<NextState<ScreenshotState>>
+) {
+    let path = format!("./debug_screenshot-{}.png", *counter);
+    *counter += 1;
+    screenshot_manager
+        .save_screenshot_to_disk(main_window.single(), path)
+        .unwrap();
+    next_state.set(ScreenshotState::NotTakingScreenshot);
+}
+
+fn screenshot_on_enter(
+    input: Res<ButtonInput<KeyCode>>,
+    mut visibility:Query<&mut Visibility, With<HelpText>>,
+    mut next_state:ResMut<NextState<ScreenshotState>>
 ) {
     if input.just_pressed(KeyCode::Enter) {
-        let path = format!("./debug_screenshot-{}.png", *counter);
-        *counter += 1;
-        screenshot_manager
-            .save_screenshot_to_disk(main_window.single(), path)
-            .unwrap();
+        *visibility.single_mut() = Visibility::Hidden;
+        next_state.set(ScreenshotState::ReadyForScreenshot);
+
+        
     }
 }
 
@@ -279,23 +350,15 @@ pub fn sample_mesh() -> HalfEdgeMesh {
 }
 
 fn main() {
-    let mut mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
-    let faces = mesh.face_keys().collect::<StackVec<_>>();
-    let face = faces[2];
-    face_ops::extrude(&mut mesh, face, 1.0);
-    let middle_halfedge = mesh.goto(face).twin().next();
-    let middle_vertex = middle_halfedge.get_vertex().unwrap();
-    let middle_halfedge = middle_halfedge.get_halfedge().unwrap();
-    face_ops::extrude(&mut mesh, face, 1.0);
-    println!("{middle_halfedge:?}");
-    edge_ops::chamfer(&mut mesh, middle_halfedge, 0.25);
+
 
     // let mut mesh = sample_mesh();
     // let v = mesh.vertex_keys().collect::<SmallVec<[_;9]>>();
     // let face = vertex_ops::chamfer(&mut mesh, v[2], 0.33);
     // face_ops::extrude(&mut mesh, face, 1.0);
-    // let edge = mesh.goto(face).get_halfedge().unwrap();
+    // let edge = mesh.goto(face).halfedge().twin().next().next().get_halfedge().unwrap();
     // edge_ops::chamfer(&mut mesh, edge, 0.25);
+    // mesh_ops::subdivide(&mut mesh);
 
 
     let mut app = App::new();
@@ -305,11 +368,14 @@ fn main() {
         config.line_perspective = false;
         config.line_width = 5.0;
     app
-        .insert_resource(DebugMesh(mesh))
+        .insert_resource(DebugMesh(build_mesh()))
         .init_state::<GizmoState>()
+        .init_state::<ScreenshotState>()
         .add_systems(Startup, (setup, capture_mouse))
         .add_systems(Update, (screenshot_on_enter, camera_controls::player_controller, gizmo_state_changes, move_labels_to_with_camera))
         .add_systems(Update, (draw_origin_gizmos, draw_vertex_gizmos, draw_edge_gizmos,).run_if(in_state(GizmoState::Draw)))
+        .add_systems(OnEnter(ScreenshotState::ReadyForScreenshot), take_screenshot)
+        .add_systems(OnEnter(ScreenshotState::NotTakingScreenshot), |mut v:Query<&mut Visibility, With<HelpText>>| for mut v in &mut v { *v = Visibility::Inherited})
         .run()
         ;
     

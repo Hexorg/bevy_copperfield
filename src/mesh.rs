@@ -3,14 +3,14 @@
 use attributes::{AttributeKind, AttributeStore, AttributeValues, Attributes};
 use bevy::{prelude::{default, Vec2, Vec3}, render::{mesh::{self, Mesh as BevyMesh}, render_asset::RenderAssetUsages}, utils::hashbrown::HashSet};
 use itertools::Itertools;
-use selection::Selection;
+// use selection::Selection;
 use slotmap::{KeyData, SlotMap};
 use smallvec::SmallVec;
-use traversal::Traversal;
+use traversal::{Traversal, VertexFlow};
 
 pub mod attributes;
 mod traversal;
-mod selection;
+// mod selection;
 pub mod vertex_ops;
 pub mod edge_ops;
 pub mod face_ops;
@@ -37,12 +37,18 @@ pub enum MeshSelection{
     Faces(Vec<FaceId>)
 }
 
+/// Trait that lets us convert some value to a specific HalfEdgeId
+/// Useful to let rays target exact part of the mesh 
 pub trait Targettable {
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition;
+    /// Convert self to a [`HalfEdgeId`]. For example if a ray 
+    /// points to this mesh this method is how you could aim at
+    /// specific parts of a mesh
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId;
 }
 
 slotmap::new_key_type! { 
     /// Index of a given [`HalfEdge`] in the staging slotmap
+    /// [`HalfEdgeMesh`] assumes [`HalfEdgeId::default()`] is equivalent to a NULL pointer
     pub struct HalfEdgeId; 
 }
 slotmap::new_key_type! { 
@@ -54,37 +60,58 @@ slotmap::new_key_type! {
     pub struct FaceId; 
 }
 
+impl HalfEdgeId {
+    /// Lets the crate create custom Id. Only used for unit-tests
+    pub(crate) fn from_ffi(ffi:u64) -> Self {
+        Self(KeyData::from_ffi(ffi))
+    }
+}
+
+impl VertexId {
+    /// Lets the crate create custom Id. Only used for unit-tests
+    pub(crate) fn from_ffi(ffi:u64) -> Self {
+        Self(KeyData::from_ffi(ffi))
+    }
+}
+
+impl FaceId {
+    /// Lets the crate create custom Id. Only used for unit-tests
+    pub(crate) fn from_ffi(ffi:u64) -> Self {
+        Self(KeyData::from_ffi(ffi))
+    }
+}
+
 impl Targettable for HalfEdgeId {
     #[inline]
-    fn get_mesh_position(self, _:&HalfEdgeMesh) -> MeshPosition {
-        self.into()
+    fn get_mesh_position(self, _:&HalfEdgeMesh) -> HalfEdgeId {
+        self
     }
 }
 
 impl Targettable for VertexId {
     #[inline]
-    fn get_mesh_position(self, _:&HalfEdgeMesh) -> MeshPosition {
-        self.into()
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
+        mesh[self].halfedge
     }
 }
 
 impl Targettable for FaceId {
     #[inline]
-    fn get_mesh_position(self, _:&HalfEdgeMesh) -> MeshPosition {
-        self.into()
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
+        mesh[self].halfedge
     }
 }
 
 impl Targettable for Vec3 {
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition {
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
         if let Some(attr) = mesh.attribute(&AttributeKind::Positions) {
             let (vertex, _) = attr.as_vertices_vec3().iter().fold((VertexId::default(), f32::MAX), |acc, p| {
                     let distance = (*p.1 - self).length();
                         if distance < acc.1 { (p.0, distance) } else { acc }
                 });
-                MeshPosition::Vertex(vertex)
+                mesh[vertex].halfedge
         } else {
-            MeshPosition::HalfEdge(HalfEdgeId(KeyData::default()))
+            default()
         }
     }
 }
@@ -113,8 +140,12 @@ impl MeshPosition {
 
 impl Targettable for MeshPosition {
     #[inline]
-    fn get_mesh_position(self, _:&HalfEdgeMesh) -> MeshPosition {
-        self
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
+        match self {
+            MeshPosition::Vertex(vertex_id) => mesh[vertex_id].halfedge,
+            MeshPosition::HalfEdge(half_edge_id) => half_edge_id,
+            MeshPosition::Face(face_id) => mesh[face_id].halfedge,
+        }
     }
 }
 
@@ -150,17 +181,35 @@ impl From<MeshPosition> for MeshSelection {
 }
 
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 /// A common way to represent a polygon mesh is a shared list of vertices and a list of faces storing pointers for its vertices. 
 /// This representation is both convenient and efficient for many purposes, however in some domains it proves ineffective.
 /// Write up about Half-Edge Data structure can be found [here](https://www.flipcode.com/archives/The_Half-Edge_Data_Structure.shtml)
 /// And [Here](https://jerryyin.info/geometry-processing-algorithms/half-edge/)1
 pub struct HalfEdge {
-    twin: HalfEdgeId, 
-    next: HalfEdgeId,
-    vertex: VertexId,
-    face: Option<FaceId>,
+    pub twin: HalfEdgeId, 
+    pub next: HalfEdgeId,
+    pub vertex: VertexId,
+    pub face: Option<FaceId>,
 }
+
+impl std::fmt::Debug for HalfEdge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut output = f.debug_struct("");
+        if self.twin != default() {
+            output.field("twin", &self.twin);
+        }
+        if self.next != default() {
+            output.field("next", &self.next);
+        }
+        output.field("vertex", &self.vertex);
+        if self.face.is_some() {
+            output.field("face", &self.face.unwrap());
+        }
+        output.finish()
+    }
+}
+
 
 #[derive(Debug, Clone, Copy, Default)]
 /// Vertex stored a pointer to exactly one of the half-edges which uses the vertex as its starting point. 
@@ -175,18 +224,6 @@ pub struct Vertex {
 /// there are multiple half-edges bordering each face, we only need to store one of them, and it doesn't matter which one.
 pub struct Face {
     halfedge: HalfEdgeId,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum MeshConstructionError{
-    NeedPolygons,
-    DuplicateVertices,
-    UnknownPosition,
-
-    /// Manifold is when each edge is contained in at most two polygons (or one polygon if it is on the boundary).
-    /// NonManifold is when one edge is in more than two polygons
-    NonManifold,
-    DisconnectedVertex,
 }
 
 /// Editable Mesh based on Half-Edge data structure. The half-edge data structure is called that because instead of 
@@ -251,99 +288,178 @@ impl HalfEdgeMesh {
         Traversal::new(self, pos.get_mesh_position(self))
     }
 
-    #[inline]
-    /// Go to a position and select it, allowing you to select more items to later act on as a group
-    pub fn select(&self, pos: impl Targettable) -> Selection<'_> {
-        self.goto(pos).into()
-    }
+    // #[inline]
+    // /// Go to a position and select it, allowing you to select more items to later act on as a group
+    // pub fn select(&self, pos: impl Targettable) -> Selection<'_> {
+    //     self.goto(pos).into()
+    // }
 
+    #[inline]
     pub fn new_vertex(&mut self) -> VertexId {
         self.vertices.insert(default())
     }
 
-    /// Reconnect the mesh such that `to_edge.next` will point to newly created edge and newly created `edge.next` will point to `edge_next`
-    /// At the same time, create a twin such that whatever `to_edge.next` was pointing to will end up being `twin.next` and the twin of `edge_next`
-    /// will become `twin.previous`
-    /// 
+    #[inline]
+    pub fn new_edge(&mut self, edge:HalfEdge, mut twin:HalfEdge) -> (HalfEdgeId, HalfEdgeId) {
+        let edge = self.halfedges.insert(edge);
+        twin.twin = edge;
+        let twin = self.halfedges.insert(twin);
+        self[edge].twin = twin;
+        (edge, twin)
+    }
+
+    /// Connect the mesh such that `edge_previous` will point to newly created edge and newly created `edge.next` will point to `edge_next`
+    /// At the same time, create a twin such that whatever `edge_previous.next` was pointing to will end up being `twin.next` and the previous of `edge_next`
+    /// will become `twin.previous` pointing to the newly created twin.
+    /// `face` argument is used to constrain the flow of edges to a face (or boundary edges if face is None)
+    /// ```text
     ///twin_vertex(w) /twin_previous
-    ///  __________./  twin_next
+    ///  __________./    twin_next
     ///  edge_next  \twin /
     ///          edge\   /
     ///                . - edge_vertex(v)
     ///              /   \
     ///edge_previous/     \
-    pub fn new_edge(&mut self, edge_previous:MeshPosition, edge_next:MeshPosition) -> (HalfEdgeId, HalfEdgeId) {
-        let edge_previous = Traversal::new(self, edge_previous);
-        let edge_next = Traversal::new(self, edge_next);
-        let (edge_vertex, twin_next, edge_previous) = if edge_previous.is_vertex() { 
-            (
-                edge_previous.get_vertex().unwrap(),
-                default(),
-                default(),
-            )
-        } else {  
-            (
-                edge_previous.twin().get_vertex().unwrap(),
-                // Find what should be edge.next pointing to, or if we can't that means there are only to_edge and its twin, so twin should be used.
-                edge_previous.next().get_halfedge().unwrap_or(edge_previous.twin().get_halfedge().unwrap()),
-                edge_previous.get_halfedge().unwrap()
-            )
-        };
+    /// ```
+    pub fn attach_edge(&mut self, edge_previous:HalfEdgeId, edge_next:HalfEdgeId) -> (HalfEdgeId, HalfEdgeId) {
+        // println!("attach_edge: edge_previous: {edge_previous:?} edge_next: {edge_next:?}");
+        let edge_next = self.goto(edge_next);
+        let edge_previous = self.goto(edge_previous);
+        let twin_next = edge_previous.next_or_twin(); // twins will be used when both are boundary edges and we're just constructing a face
+        let twin_previous = *edge_next.previous_or_twin();
+        let twin_vertex = edge_next.vertex();
+        let edge_vertex = twin_next.vertex();
+        let edge_face = edge_previous.face();
+        let twin_face = twin_next.face();
 
-        let (twin_vertex, twin_previous, edge_next) = if edge_next.is_vertex() {
-            (
-                edge_next.get_vertex().unwrap(),
-                default(),
-                default(),
-            )
-        } else {
-            (
-                edge_next.get_vertex().unwrap(),
-                // Find incoming edge that points to edge_next, or if we can't that means there are only edge_next and its twin, so twin should be used.
-                edge_next.previous().get_halfedge().unwrap_or(edge_next.twin().get_halfedge().unwrap()),
-                edge_next.get_halfedge().unwrap()
-            )
-        };
-
-        if twin_next == twin_previous && twin_next != default() {
-            let twin = self.goto(edge_previous).twin().get_halfedge().unwrap();
-            (twin_next, twin)
-        } else {
-            let edge = self.halfedges.insert(HalfEdge { twin: default(), next:edge_next, vertex: edge_vertex, face: None });
-            if edge_previous != default() {
-                self[edge_previous].next = edge;
-            }
-            let twin = self.halfedges.insert(HalfEdge { twin: edge, next:twin_next, vertex: twin_vertex, face: None });
-            self[edge].twin = twin;
-            if twin_previous != default() {
-                self[twin_previous].next = twin;
-            }
-            self[edge_vertex].halfedge = edge;
-            self[twin_vertex].halfedge = twin;
-            (edge, twin)
+        let edge_next = *edge_next;
+        let edge_previous = *edge_previous;
+        let twin_next = *twin_next;
+        let (edge, twin) = self.new_edge(
+            HalfEdge {next: edge_next, vertex: edge_vertex, face: edge_face, ..default() }, 
+            HalfEdge {next: twin_next, vertex: twin_vertex, face: twin_face, ..default() }
+        );
+        if let Some(edge_previous) = self.halfedges.get_mut(edge_previous) {
+            edge_previous.next = edge;
         }
+        if let Some(twin_previous) = self.halfedges.get_mut(twin_previous) {
+            twin_previous.next = twin;
+        }
+        self[edge_vertex].halfedge = edge;
+        self[twin_vertex].halfedge = twin;
+        // println!("\tCreated new edge: {edge:?}:{:?} and {twin:?}{:?}", self[edge], self[twin]);
+        (edge, twin)
     }
+    
 
     /// Create a new face and attach it to correct twin edges.
     /// This method does not modify twin edges if they already exist
     pub fn new_face(&mut self, face:&[VertexId]) -> FaceId {
         let face_id = self.faces.insert(Face { halfedge: default() });
-
+        println!("\tnew_face: {face:?}");
         let mut face_edges:StackVec<HalfEdgeId> = StackVec::new();
+        let mut start_flows:StackVec<VertexFlow> = StackVec::new();
+        let mut end_flows:StackVec<VertexFlow> = StackVec::new();
         for (&start, &end) in face.iter().circular_tuple_windows() {
-            // choose previously created edge for this face, or choose a boundary edge if there are not previously created edges.
-            let to_start = self.goto(start).iter_incoming().find(|pos| if !face_edges.is_empty() { pos.get_halfedge().ok() == face_edges.last().copied() } else { pos.get_face().unwrap().is_none()}).unwrap_or(self.goto(start));
-            // choose the first edge of this face if only the last face-edge left, or choose a boundary edge 
-            let from_end = self.goto(end).iter_outgoing().find(|pos| if face_edges.len() + 1 == face.len() { pos.get_halfedge().ok() == face_edges.first().copied()} else {pos.get_face().unwrap().is_none()}).unwrap_or(self.goto(end));
-            
-            let (edge, _) = self.new_edge(to_start.get_position(), from_end.get_position());
-            face_edges.push(edge);
+            start_flows.clear();
+            end_flows.clear();
+            println!("\tnew_face: Creating edge from {start:?} to {end:?}");
+            if self.halfedges.contains_key(self[start].halfedge) {
+                start_flows.extend(self.goto(start).get_flow(None));
+            };
+            if self.halfedges.contains_key(self[end].halfedge) {
+                end_flows.extend(self.goto(end).get_flow(None));
+            };
+            println!("\tnew_face: start_flows: {start_flows:?}");
+            println!("\tnew_face: end_flows: {end_flows:?}");
+
+            let mut selected_start_flow:Option<VertexFlow> = None; 
+            let mut selected_end_flow:Option<VertexFlow> = None;
+            let mut is_existing_edge = false;
+            // cross-compare possible edge flows and prefer already-connected edges
+            // or edges that we previously created for this face
+            for start_flow in &start_flows {
+                for end_flow in &end_flows {
+                    if start_flow.outgoing == end_flow.incoming && self.halfedges.contains_key(start_flow.outgoing) {
+                        is_existing_edge = true;
+                        face_edges.push(start_flow.outgoing);
+                        break;
+                    }
+                    if let Some(&first_face_edge) = face_edges.first() {
+                        if end_flow.outgoing == first_face_edge {
+                            selected_end_flow = Some(*end_flow);
+                        }
+                    }
+                }
+                if let Some(&last_face_edge) = face_edges.last() {
+                    if start_flow.incoming == last_face_edge {
+                        selected_start_flow = Some(*start_flow);
+                    }
+                }
+                if is_existing_edge {
+                    break;
+                }
+            }
+            if is_existing_edge {
+                // println!("Connecting edge already exists");
+                continue;
+            } else {
+                if selected_start_flow.is_none() && !start_flows.is_empty() {
+                    selected_start_flow = Some(start_flows[0]);
+                }
+                if selected_end_flow.is_none() && !end_flows.is_empty() {
+                    selected_end_flow = Some(end_flows[0]);
+                }
+                let edge = match (selected_start_flow, selected_end_flow) {
+                    (Some(start_flow), Some(end_flow)) => {
+                        println!("Attaching an edge from {:?} to {:?}", start_flow.incoming, end_flow.outgoing);
+                        let (edge, _) = self.attach_edge(start_flow.incoming, end_flow.outgoing);
+                        edge
+                    },
+                    (Some(start_flow), None) => { // == * == *
+                        let (edge, twin) = self.new_edge(
+                            HalfEdge {vertex:start, face:self[start_flow.incoming].face, ..default()}, 
+                            HalfEdge {next:start_flow.outgoing, vertex:end, face:self[start_flow.outgoing].face, ..default()}
+                        );
+                        assert_eq!(self[start_flow.incoming].face, None);
+                        println!("Start vertex {start:?} has flow data, {end:?} is a new point.");
+                        self[start_flow.incoming].next = edge;
+                        self[end].halfedge = twin;
+                        edge
+                    },
+                    (None, Some(end_flow)) => { // * == * ==
+                        let (edge, twin) = self.new_edge(
+                            HalfEdge{next:end_flow.outgoing, vertex:start, face:self[end_flow.outgoing].face, ..default()},
+                            HalfEdge{vertex:end, face:self[end_flow.incoming].face, ..default()}
+                        );
+                        println!("End vertex {end:?} has flow data, {start:?} is a new point.");
+                        self[end_flow.incoming].next = twin;
+                        self[start].halfedge = edge;
+                        edge
+                    },
+                    (None, None) => {
+                        println!("Both vertices {start:?} and {end:?} are new");
+                        if self.halfedges.contains_key(self[start].halfedge) && self[self[start].halfedge].vertex == start || self.halfedges.contains_key(self[end].halfedge) && self[self[end].halfedge].vertex == end {
+                            panic!("No boundary edges found but vertices {start:?} or {end:?} contain non-boundary edges. You're trying to create a non-manifold. Unable to continue.");
+                        }
+                        let (edge, twin) = self.new_edge(HalfEdge{vertex:start,..default()}, HalfEdge{vertex:end,..default()});
+                        self[start].halfedge = edge;
+                        self[end].halfedge = twin;
+                        edge
+                    }
+                };
+                face_edges.push(edge);
+            }
         }
 
         self[face_id].halfedge = face_edges[0];
         for edge in face_edges {
+            // println!("Setting {edge:?}.face = Some({face_id:?}");
             self[edge].face = Some(face_id);
         }
+        // println!(" ** Last edge! **");
+        // let (edge, _) = self.new_edge(face[0], *face.last().unwrap(), Some(face_id));
+        // self[edge].face = Some(face_id);
         face_id
     }
     
@@ -354,7 +470,7 @@ impl HalfEdgeMesh {
         let positions = self.attributes[&AttributeKind::Positions].as_vertices_vec3();
         let verts:StackVec<_> = self.goto(face)
             .iter_loop()
-            .map(|f| positions[f.get_vertex().unwrap()]).collect();
+            .map(|f| positions[f.vertex()]).collect();
         for idx in 0..(verts.len()-2) {
             let v01 = verts[idx] - verts[idx+1];
             let v12 = verts[idx+1] - verts[idx+2];
@@ -384,6 +500,11 @@ impl HalfEdgeMesh {
     /// How many vertices are currently allocated
     pub fn vertex_count(&self) -> usize {
         self.vertices.len()
+    }
+
+    /// How many halfedges are currently allocated
+    pub fn halfedge_count(&self) -> usize {
+        self.halfedges.len()
     }
 
     pub fn face_keys(&self) -> slotmap::basic::Keys<FaceId, Face>{
@@ -422,12 +543,10 @@ impl HalfEdgeMesh {
         let mut unvisited_vertices:HashSet<_> = self.vertices.keys().collect();
         let mut island_count = 0;
         fn remove_visited(set:&mut HashSet<VertexId>, mesh:&HalfEdgeMesh, init:VertexId) {
-            set.remove(&init); // iter_fan iterates over the edges (including edge of this vertex) but if this vertex has no edge this function will loop forever without removing this vertex first
-            for visited in mesh.goto(init).iter_outgoing().map(|t| t.next().get_vertex().unwrap()) {
-                let visited = visited;
-                if set.remove(&visited) {
-                    remove_visited(set, mesh, visited)
-                } 
+            if set.remove(&init) {
+                for visited in mesh.goto(init).iter_incoming().map(|t| t.vertex()) {
+                    remove_visited(set, mesh, visited);
+                }
             }
         }
         loop {
@@ -447,7 +566,7 @@ impl HalfEdgeMesh {
         self.goto(vertex).iter_outgoing().count() 
     }
 
-    fn print_mesh(&self) {
+    pub(crate) fn print_mesh(&self) {
         println!("Mesh:");
         for (id, Vertex{halfedge}) in &self.vertices {
             println!("\t{id:?} -> {halfedge:?}");
@@ -463,7 +582,7 @@ impl HalfEdgeMesh {
 
 
 impl TryFrom<BevyMesh> for HalfEdgeMesh {
-    type Error = MeshConstructionError;
+    type Error = ();
     fn try_from(bevy_mesh: BevyMesh) -> Result<Self, Self::Error> {
         if let (Some(positions), Some(indices)) = (bevy_mesh.attribute(BevyMesh::ATTRIBUTE_POSITION), bevy_mesh.indices()) {
             if let Some(positions) = positions.as_float3() {
@@ -490,9 +609,7 @@ impl TryFrom<BevyMesh> for HalfEdgeMesh {
         } else {
             todo!("Only indexed [f32;3] format supported for now");
         }
-
     }
-    
 }
 
 impl From<&HalfEdgeMesh> for BevyMesh {
@@ -505,7 +622,7 @@ impl From<&HalfEdgeMesh> for BevyMesh {
         let position_data = mesh.attribute(&AttributeKind::Positions).unwrap().as_vertices_vec3();
         for face in mesh.faces.keys() { 
             let face_start_index = positions.len() as u32;
-            let halfedges:SmallVec<[_;6]> = mesh.goto(face).iter_loop().map(|f| (f.get_halfedge().unwrap(), f.get_vertex().unwrap())).collect();
+            let halfedges:SmallVec<[_;6]> = mesh.goto(face).iter_loop().map(|f| (*f, f.vertex())).collect();
             let mut index_mapping:SmallVec<[Option<usize>;6]> = SmallVec::new();
             for _ in 0..halfedges.len() {
                 index_mapping.push(None);
@@ -561,48 +678,14 @@ impl From<&HalfEdgeMesh> for BevyMesh {
 
 #[cfg(test)]
 mod tests {
-    use bevy::prelude::{Cuboid, MeshBuilder, Meshable};
-    use slotmap::KeyData;
+    use bevy::{math::Vec3, prelude::{Cuboid, MeshBuilder, Meshable}};
+    use slotmap::{KeyData, SecondaryMap};
     use smallvec::SmallVec;
 
-    use crate::{mesh::{FaceId, HalfEdgeMesh, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
+    use crate::{mesh::{FaceId, HalfEdgeMesh, VertexId}};
 
-    use super::HalfEdgeId;
+    use super::{attributes::AttributeKind, HalfEdgeId};
 
-    /// Returns a mesh in the form
-    /// ```text
-    /// indices    VertexId    FaceId
-    /// 0--3--5    1--4--6     +--+--+
-    /// |  |  |    |  |  |     |1 |2 |
-    /// 1--2--4    2--3--5     +--+--+
-    /// |  |  |    |  |  |     |3 |4 |
-    /// 6--7--8    7--8--9     +--+--+
-    /// ```
-    pub fn sample_mesh() -> HalfEdgeMesh {
-        let mut mesh = HalfEdgeMesh::new();
-        let vertices:SmallVec<[_;9]> = (0..9).map(|_| mesh.new_vertex()).collect();
-        mesh.new_face(&[vertices[0], vertices[1], vertices[2], vertices[3]]);
-        mesh.new_face(&[vertices[3], vertices[2], vertices[4], vertices[5]]);
-        mesh.new_face(&[vertices[1], vertices[6], vertices[7], vertices[2]]);
-        mesh.new_face(&[vertices[2], vertices[7], vertices[8], vertices[4]]);
-        mesh
-    }
-
-    #[test]
-    fn test_sample_mesh() {
-        let mesh = sample_mesh();
-        assert_eq!(mesh.count_islands(), 1);
-        assert_eq!(mesh.count_face_edges(), 16);
-        assert_eq!(mesh.face_count(), 4);
-        assert_eq!(mesh.vertex_count(), 9);
-        for i in 1..(mesh.face_count()+1) {
-            assert_eq!(mesh[mesh[FaceId(KeyData::from_ffi(i as u64))].halfedge].face, Some(FaceId(KeyData::from_ffi(i as u64))));
-        }
-        for i in 1..(mesh.vertex_count()+1) {
-            assert_eq!(mesh.vertex_degree(VertexId(KeyData::from_ffi(i as u64))), mesh.goto(VertexId(KeyData::from_ffi(i as u64))).adjacent_faces().count() + if i == 3 { 0 } else { 1 });
-
-        }
-    }
 
     #[test]
     fn test_new_face(){
@@ -610,11 +693,12 @@ mod tests {
         let face = [mesh.new_vertex(), mesh.new_vertex(), mesh.new_vertex()];
         let face_id = mesh.new_face(&face);
         assert_eq!(mesh.vertex_count(), 3);
+        mesh.print_mesh();
         assert_eq!(mesh.count_islands(), 1);
         assert_eq!(mesh.count_face_edges(), 3);
         assert_eq!(mesh.halfedges.len(), 6);
-        assert_eq!(HalfEdgeId(KeyData::from_ffi(5)), mesh.goto(HalfEdgeId(KeyData::from_ffi(1))).previous().get_halfedge().unwrap());
-        assert_eq!(HalfEdgeId(KeyData::from_ffi(4)), mesh.goto(HalfEdgeId(KeyData::from_ffi(2))).previous().get_halfedge().unwrap());
+        assert_eq!(HalfEdgeId(KeyData::from_ffi(5)), *mesh.goto(HalfEdgeId(KeyData::from_ffi(1))).previous());
+        assert_eq!(HalfEdgeId(KeyData::from_ffi(4)), *mesh.goto(HalfEdgeId(KeyData::from_ffi(2))).previous());
     }
 
     #[test]
@@ -624,6 +708,7 @@ mod tests {
         let face_id = mesh.new_face(&face);
         let face = [mesh.new_vertex(), mesh.new_vertex(), mesh.new_vertex()];
         let face_id = mesh.new_face(&face);
+        
         assert_eq!(mesh.vertex_count(), 6);
         assert_eq!(mesh.count_islands(), 2);
         assert_eq!(mesh.count_face_edges(), 6);
@@ -637,6 +722,7 @@ mod tests {
         let face_id = mesh.new_face(&face);
         let face = [face[1], face[0], mesh.new_vertex()];
         let face_id = mesh.new_face(&face);
+        mesh.print_mesh();
         assert_eq!(mesh.vertex_count(), 4);
         assert_eq!(mesh.count_islands(), 1);
         assert_eq!(mesh.count_face_edges(), 6);
@@ -655,39 +741,46 @@ mod tests {
         assert_eq!(mesh.halfedges.len(), 36+4*6);
     }
 
+
+    /// Returns a mesh in the form
+    /// ```text
+    /// indices    VertexId    FaceId
+    /// 0--3--5    1--4--6     +--+--+
+    /// |  |  |    |  |  |     |1 |2 |
+    /// 1--2--4    2--3--5     +--+--+
+    /// |  |  |    |  |  |     |3 |4 |
+    /// 6--7--8    7--8--9     +--+--+
+    /// ```
+    pub fn sample_mesh() -> HalfEdgeMesh {
+        let mut mesh = HalfEdgeMesh::new();
+        let v:SmallVec<[_;9]> = (0..9).map(|_| mesh.new_vertex()).collect();
+        mesh.new_face(&[v[0], v[1], v[2], v[3]]);
+        mesh.new_face(&[v[3], v[2], v[4], v[5]]);
+        mesh.new_face(&[v[1], v[6], v[7], v[2]]);
+        mesh.new_face(&[v[2], v[7], v[8], v[4]]);
+        let positions = SecondaryMap::from_iter([
+            (v[0], -Vec3::X-Vec3::Z), (v[3], -Vec3::Z+0.5*Vec3::Y), (v[5], Vec3::X-Vec3::Z),
+            (v[1], -Vec3::X+0.5*Vec3::Y), (v[2], Vec3::Y), (v[4], Vec3::X+0.5*Vec3::Y),
+            (v[6], -Vec3::X+Vec3::Z), (v[7], Vec3::Z+0.5*Vec3::Y), (v[8], Vec3::X+Vec3::Z),
+        ]);
+        mesh.add_attribute(AttributeKind::Positions, positions);
+        mesh
+    }
+
     #[test]
-    fn from_cuboid() {
-        let mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
-        assert_eq!(mesh.face_count(), 6);
-        assert_eq!(mesh.vertex_count(), 8);
-        assert_eq!(mesh.count_islands(), 1);
-        assert_eq!(mesh.count_face_edges(), mesh.halfedges.len());
-        assert_eq!(mesh.count_face_edges(), 24);
+    fn test_sample_mesh() {
+        let mesh = sample_mesh();
         mesh.print_mesh();
-        let vertices:SmallVec<[_;8]> = mesh.vertices.keys().collect();
-        let next_vertices:SmallVec<[_;8]> = vertices.iter().map(|v| (*v, mesh.goto(*v).next().get_vertex().unwrap())).collect();
-        assert_eq!(next_vertices, SmallVec::from_buf([
-            (VertexId(KeyData::from_ffi(1)), VertexId(KeyData::from_ffi(8))),
-            (VertexId(KeyData::from_ffi(2)), VertexId(KeyData::from_ffi(7))),
-            (VertexId(KeyData::from_ffi(3)), VertexId(KeyData::from_ffi(6))),
-            (VertexId(KeyData::from_ffi(4)), VertexId(KeyData::from_ffi(5))),
-            (VertexId(KeyData::from_ffi(5)), VertexId(KeyData::from_ffi(4))),
-            (VertexId(KeyData::from_ffi(6)), VertexId(KeyData::from_ffi(3))),
-            (VertexId(KeyData::from_ffi(7)), VertexId(KeyData::from_ffi(2))),
-            (VertexId(KeyData::from_ffi(8)), VertexId(KeyData::from_ffi(1))),
-            ]));
-        let twin_vertices:SmallVec<[_;8]> = vertices.iter().map(|v| (*v, mesh.goto(*v).twin().get_vertex().unwrap())).collect();
-        assert_eq!(twin_vertices, SmallVec::from_buf([
-            (VertexId(KeyData::from_ffi(1)), VertexId(KeyData::from_ffi(8))),
-            (VertexId(KeyData::from_ffi(2)), VertexId(KeyData::from_ffi(7))),
-            (VertexId(KeyData::from_ffi(3)), VertexId(KeyData::from_ffi(6))),
-            (VertexId(KeyData::from_ffi(4)), VertexId(KeyData::from_ffi(5))),
-            (VertexId(KeyData::from_ffi(5)), VertexId(KeyData::from_ffi(4))),
-            (VertexId(KeyData::from_ffi(6)), VertexId(KeyData::from_ffi(3))),
-            (VertexId(KeyData::from_ffi(7)), VertexId(KeyData::from_ffi(2))),
-            (VertexId(KeyData::from_ffi(8)), VertexId(KeyData::from_ffi(1))),
-            ]));
-        assert_eq!(twin_vertices, next_vertices);
+        assert_eq!(mesh.count_face_edges(), 16);
+        assert_eq!(mesh.face_count(), 4);
+        assert_eq!(mesh.vertex_count(), 9);
+        assert_eq!(mesh.count_islands(), 1);
+        for i in 1..(mesh.face_count()+1) {
+            assert_eq!(mesh[mesh[FaceId(KeyData::from_ffi(i as u64))].halfedge].face, Some(FaceId(KeyData::from_ffi(i as u64))));
+        }
+        for i in 1..(mesh.vertex_count()+1) {
+            assert_eq!(mesh.vertex_degree(VertexId(KeyData::from_ffi(i as u64))), mesh.goto(VertexId(KeyData::from_ffi(i as u64))).adjacent_faces().count() + if i == 3 { 0 } else { 1 });
+        }
     }
 
 }

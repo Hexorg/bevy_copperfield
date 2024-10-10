@@ -1,7 +1,7 @@
 //! A simple 3D scene with light shining over a cube sitting on a plane.
 
 use bevy::{pbr::wireframe::{Wireframe, WireframePlugin}, prelude::*};
-use bevy_copperfield::{mesh::vertex_ops, mesh_builders::HalfEdgeMeshBuilder};
+use bevy_copperfield::mesh_builders::HalfEdgeMeshBuilder;
 // use bevy_copperfield::{mesh::{vertex_ops::chamfer, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
 
 fn main() {
@@ -26,10 +26,10 @@ fn setup(
         ..default()
     });
     // cube
-    let mut cube = Cuboid::new(1.0, 1.0, 1.0).procgen();
+    let cube = Cuboid::new(1.0, 1.0, 1.0).procgen();
 
-    let vertex = cube.goto(Vec3::ONE).get_vertex().unwrap();
-    vertex_ops::chamfer(&mut cube, vertex, 0.25);
+    let vertex = cube.goto(Vec3::ONE).vertex();
+    // vertex_ops::chamfer(&mut cube, vertex, 0.25);
     // chamfer(&mut cube, vertex, 0.1).unwrap();
     // let other_vertex = cube.goto(Vec3{x:-0.5, y:0.5, z:0.5}).get_vertex().unwrap();
     // chamfer(&mut cube, other_vertex, 0.3).unwrap();

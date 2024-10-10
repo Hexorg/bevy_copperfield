@@ -1,11 +1,11 @@
 use itertools::Itertools;
 
 
-use super::{edge_ops, face_ops, traversal::{TraversalError, TraversalResult}, FaceId, HalfEdgeMesh, StackVec, VertexId};
+use super::{edge_ops, face_ops, FaceId, HalfEdgeMesh, StackVec, VertexId};
 
 /// Removes a vertex, either making a mesh boundary, or filling it up with a new face
 pub fn delete(mesh:&mut HalfEdgeMesh, vertex:VertexId, is_fill:bool) -> StackVec<Option<FaceId>> {
-    let fan:StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| t.get_halfedge().unwrap()).collect();
+    let fan:StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| *t).collect();
     let result = fan.iter().map(|&edge| edge_ops::delete(mesh, edge, is_fill)).collect();
     mesh.vertices.remove(vertex);
     result
@@ -14,7 +14,7 @@ pub fn delete(mesh:&mut HalfEdgeMesh, vertex:VertexId, is_fill:bool) -> StackVec
 /// Chamfers a vertex by stitching a face from mid-points of the vertex's outgoing edges. Returns newly-created FaceId
 pub fn chamfer(mesh:&mut HalfEdgeMesh, vertex:VertexId, factor:f32) -> FaceId {
     // Find outgoing edges
-    let outgoing:StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| t.get_halfedge().unwrap()).collect();
+    let outgoing:StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| *t).collect();
     // Split each edge into two, returning new vertices as an array
     let new_vertices:StackVec<_> = outgoing.iter().map(|&target| edge_ops::split(mesh, target, factor)).collect();
     // Connect pairs of vertices together to form new edges
@@ -26,10 +26,10 @@ pub fn chamfer(mesh:&mut HalfEdgeMesh, vertex:VertexId, factor:f32) -> FaceId {
 
 /// Delete this vertex only if it lies within two faces (has two outbound half-edges)
 /// Merge the half-edges together in a continous line, reducing the edge count for contained faces.
-pub fn dissolve(mesh:&mut HalfEdgeMesh, vertex:VertexId) -> TraversalResult<()>{
-    let outgoing = mesh.goto(vertex).iter_outgoing().map(|e| (e.get_halfedge().unwrap(), e.twin().get_halfedge().unwrap(), e.get_face().unwrap())).collect::<StackVec<_>>();
+pub fn dissolve(mesh:&mut HalfEdgeMesh, vertex:VertexId) {
+    let outgoing = mesh.goto(vertex).iter_outgoing().map(|e| (*e, *e.twin(), e.face())).collect::<StackVec<_>>();
     if outgoing.len() != 2 {
-        return Err(TraversalError::new(vertex, super::traversal::TraversalErrorKind::UndefinedOperation))
+        panic!("Tried to dissolve a vertex that deson't connect only 2 edges");
     }
     // outgoing[n].0 is outgoing and outgoing[n].1 is incoming
     let direction = if mesh[outgoing[0].1].next == outgoing[1].0 { 0 } else { 1 };
@@ -48,7 +48,6 @@ pub fn dissolve(mesh:&mut HalfEdgeMesh, vertex:VertexId) -> TraversalResult<()>{
     // TODO: Figure out how to clean vertex attributes in a nice way
     mesh.vertices.remove(vertex);
 
-    Ok(())
 }
 
 #[cfg(test)]

@@ -41,10 +41,53 @@ impl HalfEdgeMeshBuilder for Cuboid {
             quad.iter().zip(new_face).for_each(
                 |(&idx, vertex)| _ = position_attribute.insert(vertex, positions[idx])
             );
-            mesh.goto(face_id).iter_loop().for_each(|edge| _ = uv_attribute.insert(edge.get_halfedge().unwrap(), Vec2::ZERO));
+            mesh.goto(face_id).iter_loop().for_each(|edge| _ = uv_attribute.insert(*edge, Vec2::ZERO));
         }
         mesh.add_attribute(AttributeKind::Positions, position_attribute);
         mesh.add_attribute(AttributeKind::UVs, uv_attribute);
         mesh
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use bevy::prelude::Cuboid;
+    
+    use smallvec::SmallVec;
+
+    use crate::{mesh::VertexId, mesh_builders::HalfEdgeMeshBuilder};
+
+    #[test]
+    fn from_cuboid() {
+        let mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
+        assert_eq!(mesh.face_count(), 6);
+        assert_eq!(mesh.vertex_count(), 8);
+        assert_eq!(mesh.count_islands(), 1);
+        assert_eq!(mesh.count_face_edges(), mesh.halfedge_count());
+        assert_eq!(mesh.count_face_edges(), 24);
+        let vertices:SmallVec<[_;8]> = mesh.vertex_keys().collect();
+        let next_vertices:SmallVec<[_;8]> = vertices.iter().map(|v| (*v, mesh.goto(*v).next().vertex())).collect();
+        assert_eq!(next_vertices, SmallVec::from_buf([
+            (VertexId::from_ffi(1), VertexId::from_ffi(8)),
+            (VertexId::from_ffi(2), VertexId::from_ffi(7)),
+            (VertexId::from_ffi(3), VertexId::from_ffi(6)),
+            (VertexId::from_ffi(4), VertexId::from_ffi(5)),
+            (VertexId::from_ffi(5), VertexId::from_ffi(4)),
+            (VertexId::from_ffi(6), VertexId::from_ffi(3)),
+            (VertexId::from_ffi(7), VertexId::from_ffi(2)),
+            (VertexId::from_ffi(8), VertexId::from_ffi(1)),
+            ]));
+        let twin_vertices:SmallVec<[_;8]> = vertices.iter().map(|v| (*v, mesh.goto(*v).twin().vertex())).collect();
+        assert_eq!(twin_vertices, SmallVec::from_buf([
+            (VertexId::from_ffi(1), VertexId::from_ffi(8)),
+            (VertexId::from_ffi(2), VertexId::from_ffi(7)),
+            (VertexId::from_ffi(3), VertexId::from_ffi(6)),
+            (VertexId::from_ffi(4), VertexId::from_ffi(5)),
+            (VertexId::from_ffi(5), VertexId::from_ffi(4)),
+            (VertexId::from_ffi(6), VertexId::from_ffi(3)),
+            (VertexId::from_ffi(7), VertexId::from_ffi(2)),
+            (VertexId::from_ffi(8), VertexId::from_ffi(1)),
+            ]));
+        assert_eq!(twin_vertices, next_vertices);
     }
 }
