@@ -322,7 +322,6 @@ impl HalfEdgeMesh {
     ///edge_previous/     \
     /// ```
     pub fn attach_edge(&mut self, edge_previous:HalfEdgeId, edge_next:HalfEdgeId) -> (HalfEdgeId, HalfEdgeId) {
-        // println!("attach_edge: edge_previous: {edge_previous:?} edge_next: {edge_next:?}");
         let edge_next = self.goto(edge_next);
         let edge_previous = self.goto(edge_previous);
         let twin_next = edge_previous.next_or_twin(); // twins will be used when both are boundary edges and we're just constructing a face
@@ -347,7 +346,6 @@ impl HalfEdgeMesh {
         }
         self[edge_vertex].halfedge = edge;
         self[twin_vertex].halfedge = twin;
-        // println!("\tCreated new edge: {edge:?}:{:?} and {twin:?}{:?}", self[edge], self[twin]);
         (edge, twin)
     }
     
@@ -356,22 +354,18 @@ impl HalfEdgeMesh {
     /// This method does not modify twin edges if they already exist
     pub fn new_face(&mut self, face:&[VertexId]) -> FaceId {
         let face_id = self.faces.insert(Face { halfedge: default() });
-        println!("\tnew_face: {face:?}");
         let mut face_edges:StackVec<HalfEdgeId> = StackVec::new();
         let mut start_flows:StackVec<VertexFlow> = StackVec::new();
         let mut end_flows:StackVec<VertexFlow> = StackVec::new();
         for (&start, &end) in face.iter().circular_tuple_windows() {
             start_flows.clear();
             end_flows.clear();
-            println!("\tnew_face: Creating edge from {start:?} to {end:?}");
             if self.halfedges.contains_key(self[start].halfedge) {
                 start_flows.extend(self.goto(start).get_flow(None));
             };
             if self.halfedges.contains_key(self[end].halfedge) {
                 end_flows.extend(self.goto(end).get_flow(None));
             };
-            println!("\tnew_face: start_flows: {start_flows:?}");
-            println!("\tnew_face: end_flows: {end_flows:?}");
 
             let mut selected_start_flow:Option<VertexFlow> = None; 
             let mut selected_end_flow:Option<VertexFlow> = None;
@@ -401,7 +395,7 @@ impl HalfEdgeMesh {
                 }
             }
             if is_existing_edge {
-                // println!("Connecting edge already exists");
+                // face_edges.push already happened above when is_existing_edge was toggled.
                 continue;
             } else {
                 if selected_start_flow.is_none() && !start_flows.is_empty() {
@@ -412,7 +406,6 @@ impl HalfEdgeMesh {
                 }
                 let edge = match (selected_start_flow, selected_end_flow) {
                     (Some(start_flow), Some(end_flow)) => {
-                        println!("Attaching an edge from {:?} to {:?}", start_flow.incoming, end_flow.outgoing);
                         let (edge, _) = self.attach_edge(start_flow.incoming, end_flow.outgoing);
                         edge
                     },
@@ -422,7 +415,6 @@ impl HalfEdgeMesh {
                             HalfEdge {next:start_flow.outgoing, vertex:end, face:self[start_flow.outgoing].face, ..default()}
                         );
                         assert_eq!(self[start_flow.incoming].face, None);
-                        println!("Start vertex {start:?} has flow data, {end:?} is a new point.");
                         self[start_flow.incoming].next = edge;
                         self[end].halfedge = twin;
                         edge
@@ -432,13 +424,11 @@ impl HalfEdgeMesh {
                             HalfEdge{next:end_flow.outgoing, vertex:start, face:self[end_flow.outgoing].face, ..default()},
                             HalfEdge{vertex:end, face:self[end_flow.incoming].face, ..default()}
                         );
-                        println!("End vertex {end:?} has flow data, {start:?} is a new point.");
                         self[end_flow.incoming].next = twin;
                         self[start].halfedge = edge;
                         edge
                     },
                     (None, None) => {
-                        println!("Both vertices {start:?} and {end:?} are new");
                         if self.halfedges.contains_key(self[start].halfedge) && self[self[start].halfedge].vertex == start || self.halfedges.contains_key(self[end].halfedge) && self[self[end].halfedge].vertex == end {
                             panic!("No boundary edges found but vertices {start:?} or {end:?} contain non-boundary edges. You're trying to create a non-manifold. Unable to continue.");
                         }
@@ -454,12 +444,8 @@ impl HalfEdgeMesh {
 
         self[face_id].halfedge = face_edges[0];
         for edge in face_edges {
-            // println!("Setting {edge:?}.face = Some({face_id:?}");
             self[edge].face = Some(face_id);
         }
-        // println!(" ** Last edge! **");
-        // let (edge, _) = self.new_edge(face[0], *face.last().unwrap(), Some(face_id));
-        // self[edge].face = Some(face_id);
         face_id
     }
     
@@ -618,35 +604,25 @@ impl From<&HalfEdgeMesh> for BevyMesh {
         let mut normals = Vec::new();
         let mut uvs= Vec::new();
         let mut indices = Vec::new();
-        // mesh.print_mesh();
         let position_data = mesh.attribute(&AttributeKind::Positions).unwrap().as_vertices_vec3();
         for face in mesh.faces.keys() { 
-            let face_start_index = positions.len() as u32;
             let halfedges:SmallVec<[_;6]> = mesh.goto(face).iter_loop().map(|f| (*f, f.vertex())).collect();
             let mut index_mapping:SmallVec<[Option<usize>;6]> = SmallVec::new();
             for _ in 0..halfedges.len() {
                 index_mapping.push(None);
             }
             let is_even = (halfedges.len() as i32 % 2) == 0;
-            // println!("New face {face:?}, size: {}", halfedges.len());
-            // println!("Halfedges: {halfedges:?}");
-            // for (_,v) in &halfedges {
-            //     println!("\t{v:?} - {:?}", position_data[*v]);
-            // }
             let mut start_index = 0;
             let mut end_index = halfedges.len() as i32 - 1;
             // Triangulate theese polygons. TODO: Figure out better way. Most crates I found were for 2D
             while end_index > 0  {
                 let triangle = [start_index, start_index+1, end_index];
-                // println!("Triangle: {triangle:?}");
                 for local_index in triangle {
                     if let Some(output_index) = index_mapping[local_index as usize] {
                         indices.push(output_index as u32);
-                        // println!("\t output_index: {output_index:?}");
                     } else {
                         index_mapping[local_index as usize] = Some(positions.len());
                         indices.push(positions.len() as u32);
-                        // println!("\t output_index: {:?}", positions.len() as u32);
                         let (edge, vertex, ) = halfedges[local_index as usize];
                         positions.push(position_data[vertex].to_array());
                         normals.push(mesh.face_normal(face).to_array());
@@ -656,11 +632,9 @@ impl From<&HalfEdgeMesh> for BevyMesh {
                 end_index -= 1;
                 start_index += 1;
                 if start_index + if is_even { 1 } else { 0 } == end_index {
-                    // println!("Detected crossover");
                     start_index += 1;
                     end_index -= 1;
                 }
-                // println!("Positions: {positions:?}");
             } 
         }
 
@@ -693,7 +667,6 @@ mod tests {
         let face = [mesh.new_vertex(), mesh.new_vertex(), mesh.new_vertex()];
         let face_id = mesh.new_face(&face);
         assert_eq!(mesh.vertex_count(), 3);
-        mesh.print_mesh();
         assert_eq!(mesh.count_islands(), 1);
         assert_eq!(mesh.count_face_edges(), 3);
         assert_eq!(mesh.halfedges.len(), 6);
@@ -722,7 +695,6 @@ mod tests {
         let face_id = mesh.new_face(&face);
         let face = [face[1], face[0], mesh.new_vertex()];
         let face_id = mesh.new_face(&face);
-        mesh.print_mesh();
         assert_eq!(mesh.vertex_count(), 4);
         assert_eq!(mesh.count_islands(), 1);
         assert_eq!(mesh.count_face_edges(), 6);
@@ -733,7 +705,6 @@ mod tests {
     fn from_bevy_mesh() {
         let bevy_mesh = Cuboid::new(1.0, 1.0, 1.0).mesh().build();
         let mesh:HalfEdgeMesh = bevy_mesh.try_into().unwrap();
-        // mesh.print_mesh();
         assert_eq!(mesh.faces.len(), 12);
         assert_eq!(mesh.vertices.len(), 24);
         assert_eq!(mesh.count_islands(), 6);
@@ -770,7 +741,6 @@ mod tests {
     #[test]
     fn test_sample_mesh() {
         let mesh = sample_mesh();
-        mesh.print_mesh();
         assert_eq!(mesh.count_face_edges(), 16);
         assert_eq!(mesh.face_count(), 4);
         assert_eq!(mesh.vertex_count(), 9);

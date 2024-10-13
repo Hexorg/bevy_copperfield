@@ -59,19 +59,18 @@ pub fn extrude(mesh:&mut HalfEdgeMesh, face:FaceId, length:f32) -> StackVec<Face
     }
     let new_verts = (0..face_edges.len()).map(|_| mesh.new_vertex()).collect::<StackVec<_>>();
     let v = new_verts[0]; // Save a new vertex to find its boundary edge later
-    println!("\n**EXTRUDE**\n");
     let new_faces = face_edges.into_iter().zip(new_verts).circular_tuple_windows().map(|(((edge, v1), v2), ((_, v3), v4))| {
         // We don't have remove us from next edge ahead because mesh.new_face doesn't modify or depend on twin edges
         let positions = mesh.attributes.get_mut(&super::attributes::AttributeKind::Positions).unwrap().as_vertices_vec3_mut();
         positions.insert(v2, positions[v1]+shift);
         mesh.new_face(&[v3, v4, v2, v1])
     }).collect::<StackVec<_>>();
-    mesh.print_mesh();
-    // let old_face_goes_here = mesh.goto(v).iter_outgoing().find(|e| e.face().is_none()).unwrap().iter_loop().map(|e| *e).collect::<StackVec<_>>();
-    // mesh[face].halfedge = old_face_goes_here[0];
-    // for edge in old_face_goes_here {
-    //     mesh[edge].face = Some(face);
-    // }
+
+    let old_face_goes_here = mesh.goto(v).iter_outgoing().find(|e| e.face().is_none()).unwrap().iter_loop().map(|e| *e).collect::<StackVec<_>>();
+    mesh[face].halfedge = old_face_goes_here[0];
+    for edge in old_face_goes_here {
+        mesh[edge].face = Some(face);
+    }
     new_faces
     
 }

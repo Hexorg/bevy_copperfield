@@ -1,24 +1,38 @@
 use core::f32;
 
-use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeQueries}, edge_ops, face_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec}, mesh_builders::HalfEdgeMeshBuilder};
+use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeQueries}, edge_ops, face_ops, mesh_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec}, mesh_builders::HalfEdgeMeshBuilder};
 use camera_controls::{capture_mouse, FlyingCamera};
 use slotmap::{SecondaryMap};
 use smallvec::SmallVec;
 use bevy::{color, math::VectorSpace, prelude::*, render::{camera::ScalingMode, view::screenshot::ScreenshotManager}, window::PrimaryWindow};
 
 pub fn cuboid_tests() -> HalfEdgeMesh {
-    
+
     let mut mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
     let faces = mesh.face_keys().collect::<StackVec<_>>();
     let face = faces[2];
     face_ops::extrude(&mut mesh, face, 1.0);
-    let middle_halfedge = mesh.goto(face).twin().next();
+    let middle_halfedge1 = mesh.goto(face).twin().next();
+    let middle_halfedge2 = middle_halfedge1.next().next().twin();
+    let middle_halfedge3 = middle_halfedge2.next().next().twin();
+    let middle_halfedge4 = middle_halfedge3.next().next().twin();
     // let middle_vertex = middle_/halfedge.get_vertex().unwrap();
 
-    let middle_halfedge = *middle_halfedge.twin();
+    let middle_halfedge1 = *middle_halfedge1;
+    let middle_halfedge2 = *middle_halfedge2;
+    let middle_halfedge3= *middle_halfedge3;
+    let middle_halfedge4 = *middle_halfedge4;
+
+
+    // let middle_halfedge = *middle_halfedge.twin();
     face_ops::extrude(&mut mesh, face, 1.0);
-    println!("{middle_halfedge:?}");
-    edge_ops::chamfer(&mut mesh, middle_halfedge, 0.25);
+    // println!("{middle_halfedge:?}");
+    edge_ops::chamfer(&mut mesh, middle_halfedge1, 0.25);
+    edge_ops::chamfer(&mut mesh, middle_halfedge2, 0.25);
+    edge_ops::chamfer(&mut mesh, middle_halfedge3, 0.25);
+    edge_ops::chamfer(&mut mesh, middle_halfedge4, 0.25);
+
+    mesh_ops::subdivide(&mut mesh);
     mesh
 }
 
@@ -26,7 +40,8 @@ pub fn sample_mesh_tests() -> HalfEdgeMesh {
     let mut mesh = sample_mesh();
     let v = mesh.vertex_keys().collect::<SmallVec<[_;9]>>();
     let face = vertex_ops::chamfer(&mut mesh, v[2], 0.25);
-    // face_ops::extrude(&mut mesh, face, 0.5);
+    face_ops::extrude(&mut mesh, face, 0.5);
+    mesh_ops::subdivide(&mut mesh);
     mesh
 }
 

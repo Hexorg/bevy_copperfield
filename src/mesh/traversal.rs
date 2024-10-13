@@ -374,7 +374,6 @@ mod tests {
             vertex: VertexId(KeyData::from_ffi(3)),
             outgoing:HalfEdgeId(KeyData::from_ffi(4))
         });
-        mesh.print_mesh();
         let t = mesh.goto(VertexId(KeyData::from_ffi(1))).get_flow(None);
         assert_eq!(t.len(), 1);
         assert_eq!(t[0], VertexFlow{

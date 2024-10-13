@@ -4,7 +4,7 @@ use slotmap::SecondaryMap;
 
 use crate::mesh::attributes::{AttributeQueries, AttributeKind};
 
-use super::{FaceId, HalfEdgeId, HalfEdgeMesh};
+use super::{edge_ops, FaceId, HalfEdgeId, HalfEdgeMesh};
 
 /// Catmull-Clark subdivision. 
 /// Based on [Wikipedia Article](https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface)
@@ -14,7 +14,6 @@ pub fn subdivide(mesh:&mut HalfEdgeMesh) {
     let original_vertices = mesh.vertex_keys().collect::<HashSet<_>>();
     // let positions = mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3();
     // Populate face_points
-    mesh.print_mesh();
     for face in mesh.faces.keys().collect::<Vec<_>>() {
         let (sum, count) = mesh.goto(face).iter_loop().fold((Vec3::ZERO,0.0_f32), |acc, v| (acc.0 + v.position(), acc.1 + 1.0));
         // positions.insert(vertex, );
@@ -42,13 +41,15 @@ pub fn subdivide(mesh:&mut HalfEdgeMesh) {
 
     for &vertex in &original_vertices {
         let p = mesh.goto(vertex).position();
-        let (sum, n) = mesh.goto(vertex).adjacent_faces().fold((Vec3::ZERO, 0.0_f32), |acc, i| (acc.0 + face_points[i.face().unwrap()], acc.1+1.0));
-        let f = sum / n;
-        let sum = mesh.goto(vertex).iter_outgoing().fold(Vec3::ZERO, |acc, i| acc + *edge_points.get(*i).unwrap_or_else(|| edge_points.get(*i.next()).unwrap()));
-        let r = sum / n;
-        let new_position = (f+2.0*r+(n-3.0)*p)/n;
+        let (sum, nf) = mesh.goto(vertex).adjacent_faces().fold((Vec3::ZERO, 0.0_f32), |acc, i| (acc.0 + face_points[i.face().unwrap()], acc.1+1.0));
+        let f = sum / nf;
+        let (sum, ne) = mesh.goto(vertex).iter_outgoing().fold((Vec3::ZERO, 0.0_f32), |acc, i| (acc.0 + *edge_points.get(*i).unwrap_or_else(|| edge_points.get(*i.next()).unwrap()), acc.1+1.0));
+        let r = sum / ne;
+        // assert_eq!(nf, ne);
+        // println!("nf: {nf:?}, ne:{ne:?}");
+        let new_position = (f+2.0*r+(nf.max(3.0)-3.0)*p)/nf;
         mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3_mut().insert(vertex, new_position);
     }
 
-    todo!("Figure out how to split mesh")
+    // todo!("Figure out how to split mesh")
 }
