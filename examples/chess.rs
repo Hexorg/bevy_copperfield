@@ -1,8 +1,20 @@
-//! A simple 3D scene with light shining over a cube sitting on a plane.
+//! 3D chess scene with procedurally generated pieces
+//! Sizes are taken from https://www.measuringhow.com/chess-piece-sizes/
+
+use core::f32;
 
 use bevy::{pbr::{wireframe::{Wireframe, WireframePlugin}}, prelude::*};
-use bevy_copperfield::{mesh::{edge_ops, vertex_ops}, mesh_builders::HalfEdgeMeshBuilder};
-// use bevy_copperfield::{mesh::{vertex_ops::chamfer, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
+use bevy_copperfield::{mesh::{edge_ops, face_ops, vertex_ops, HalfEdgeMesh}, mesh_builders::HalfEdgeMeshBuilder};
+
+fn make_base(diameter:f32) -> HalfEdgeMesh {
+    let mut mesh = Circle::new(0.5*diameter).mesh().resolution(8).procgen();
+    let face = mesh.goto(Vec3::ZERO).twin().face().unwrap();
+    face_ops::transform(&mut mesh, face, Transform::from_translation(-0.5*diameter*Vec3::Y).with_rotation(Quat::from_rotation_x(-f32::consts::FRAC_PI_2)));
+    
+    face_ops::extrude(&mut mesh, face, diameter);
+    mesh
+}
+
 
 fn main() {
     App::new()
@@ -26,11 +38,11 @@ fn setup(
         ..default()
     });
     // cube
-    let mut cube = Cuboid::new(1.0, 1.0, 1.0).procgen();
+    let mut cube = make_base(1.0);
 
-    let edge = *cube.goto(Vec3::ONE);
-    let vertex = edge_ops::split(&mut cube, edge, 0.33);
-    vertex_ops::chamfer(&mut cube, vertex, 0.25);
+    // let edge = *cube.goto(Vec3::ONE);
+    // let vertex = edge_ops::split(&mut cube, edge, 0.33);
+    // vertex_ops::chamfer(&mut cube, vertex, 0.25);
     // chamfer(&mut cube, vertex, 0.1).unwrap();
     // let other_vertex = cube.goto(Vec3{x:-0.5, y:0.5, z:0.5}).get_vertex().unwrap();
     // chamfer(&mut cube, other_vertex, 0.3).unwrap();
@@ -57,7 +69,7 @@ fn setup(
 }
 
 fn update(time:Res<Time>, mut camera:Query<&mut Transform, With<Camera>>) {
-    let (x, z) = time.elapsed_seconds().sin_cos();
+    let (x, z) = (0.8*time.elapsed_seconds()).sin_cos();
     let pos = Vec3{x, y:0.45, z}*10.0;
     let mut transform = camera.single_mut();
     transform.translation = pos;

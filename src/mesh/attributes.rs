@@ -146,9 +146,9 @@ impl<'m> AttributeQueries for Traversal<'m> {
 
     fn is_smooth_normals(&self) -> bool {
         if let Some(store) = self.mesh.attribute(&super::attributes::AttributeKind::Creases) {
-            store.as_vertices_bool().get(self.vertex()).copied().unwrap_or(true)
+            store.as_vertices_bool().get(self.vertex()).copied().unwrap_or(self.mesh.is_smooth)
         } else {
-            true
+            self.mesh.is_smooth
         }
     }
 }

@@ -81,7 +81,7 @@ impl<'m> Iterator for EdgeIterator<'m> {
     fn next(&mut self) -> Option<Self::Item> {
         self.count += 1;
         if self.count > TRAVERSAL_LOOP_LIMIT {
-            panic!("{:?} Iterated {TRAVERSAL_LOOP_LIMIT} times. Assuming vertices can't have that many edges, therefore the mesh is broken.", self.kind);
+            panic!("Traversal::Iter_{:?} Iterated {TRAVERSAL_LOOP_LIMIT} times starting from {:?}. Assuming vertices can't have that many edges, therefore the mesh is broken.", self.kind, self.start);
         } 
         let item = match self.kind {
             EdgeIteratorKind::Loop | EdgeIteratorKind::Outgoing => self.traversal,
@@ -215,6 +215,7 @@ impl<'m> Traversal<'m> {
     pub fn get_flow(self, face:Option<FaceId>) -> StackVec<VertexFlow> {
         let mut result:StackVec<_> = self.iter_incoming().filter_map(|incoming| if incoming.face() == face {
             let outgoing = incoming.try_next().map(|t| if t.face() == face { *t } else { 
+                self.mesh.print_mesh();
                 panic!("Outgoing edge {t:?} has different face {:?} from incoming edge {incoming:?} face {:?}. Mesh is malformed", t.face(), incoming.face());
              }).unwrap_or_else(|| if face.is_none() { *incoming.twin() } else { default()});
             let vertex = incoming.twin().vertex();

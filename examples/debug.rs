@@ -8,7 +8,7 @@ use bevy::{color, math::VectorSpace, prelude::*, render::{camera::ScalingMode, v
 
 pub fn cuboid_tests() -> HalfEdgeMesh {
 
-    let mut mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
+    let mut mesh = Cuboid::new(1.0, 0.33, 1.0).procgen();
     let faces = mesh.face_keys().collect::<StackVec<_>>();
     let face = faces[1];
     face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:0.5, y:1.0, z:0.5}));
@@ -18,9 +18,9 @@ pub fn cuboid_tests() -> HalfEdgeMesh {
     face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:1.25, y:1.0, z:1.25}));
     face_ops::extrude(&mut mesh, face, 0.33);
     face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:2.0, y:1.0, z:2.0}));
-    // let face_vertices = mesh.goto(face).iter_loop().map(|e| (e.vertex(), false)).collect::<StackVec<_>>();
-    // let sharp_edges:SecondaryMap<VertexId, bool> = SecondaryMap::from_iter(face_vertices);
-    // mesh.add_attribute(AttributeKind::Creases, AttributeValues::VertexBool(sharp_edges));
+    let face_vertices = mesh.goto(face).iter_loop().map(|e| (e.vertex(), false)).collect::<StackVec<_>>();
+    let sharp_edges:SecondaryMap<VertexId, bool> = SecondaryMap::from_iter(face_vertices);
+    mesh.add_attribute(AttributeKind::Creases, AttributeValues::VertexBool(sharp_edges));
     mesh
 }
 
@@ -34,9 +34,20 @@ pub fn sample_mesh_tests() -> HalfEdgeMesh {
     mesh
 }
 
+pub fn builder_tests() -> HalfEdgeMesh {
+    let mut mesh = Circle::new(0.5).mesh().resolution(8).procgen();
+    mesh.set_smooth(false);
+    let face = mesh.goto(Vec3::ZERO).twin().face().unwrap();
+    face_ops::transform(&mut mesh, face, Transform::from_translation(-0.5*Vec3::Y).with_rotation(Quat::from_rotation_x(-f32::consts::FRAC_PI_2)));
+    
+    face_ops::extrude(&mut mesh, face, 1.0);
+    mesh
+}
+
 pub fn build_mesh() -> HalfEdgeMesh {   
-    cuboid_tests()
+    // cuboid_tests()
     // sample_mesh_tests()
+    builder_tests()
 }
 
 
@@ -190,7 +201,7 @@ fn setup(
     // camera
     commands.spawn((FlyingCamera{pitch:-0.5*f32::consts::PI, yaw:0.0}, Camera3dBundle {
         transform: Transform::from_xyz(0.0, 3.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
-        projection:Projection::Orthographic(OrthographicProjection { near: 0.1, far: 10.0, scaling_mode: ScalingMode::WindowSize(300.0), scale: 1.0, ..default() }),
+        projection:Projection::Orthographic(OrthographicProjection {scaling_mode: ScalingMode::WindowSize(300.0), ..default() }),
         ..default()
     }));
 
@@ -249,7 +260,7 @@ fn get_edge_pos(edge:HalfEdgeId, mesh:&HalfEdgeMesh) -> (Vec3, Vec3) {
     let direction = distance_to_end.normalize();
     let distance_to_end = distance_to_end.length();
     let shift = OFFSET*if edge.face().is_some() {
-        get_face_center_pos(*edge, mesh) - start + OFFSET*edge.calculate_face_point()
+        get_face_center_pos(*edge, mesh) - start + OFFSET*edge.calculate_face_normal()
     } else {
         -(get_face_center_pos(*edge.twin(), mesh) - start)
     };
@@ -262,10 +273,10 @@ fn draw_edge_gizmos(mesh:Res<DebugMesh>, mut gizmos:Gizmos) {
         let (start, end) = get_edge_pos(edge, &mesh.0);
         gizmos.arrow(start, end, EDGE_COLOR);
         // Draw lines towards face center
-        // if mesh[edge].face.is_some() {
-        //     let face_center = get_face_center_pos(edge, &mesh.0);
-        //     gizmos.line(start, face_center, FACE_COLOR);
-        // }
+        if mesh[edge].face.is_some() {
+            let face_center = get_face_center_pos(edge, &mesh.0);
+            gizmos.line(start, face_center, FACE_COLOR);
+        }
         let start = mesh.goto(edge).position();
         let end = mesh.goto(edge).twin().position();
         gizmos.line(start, end, RIB_COLOR);

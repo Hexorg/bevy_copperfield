@@ -1,4 +1,4 @@
-use bevy::prelude::Transform;
+use bevy::prelude::{default, Transform};
 use itertools::Itertools;
 
 use super::{attributes::AttributeQueries, Face, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
@@ -61,15 +61,21 @@ pub fn split(mesh:&mut HalfEdgeMesh, v:VertexId, w:VertexId) -> HalfEdgeId {
 
 pub fn extrude(mesh:&mut HalfEdgeMesh, face:FaceId, length:f32) -> StackVec<FaceId> {
     let shift = length*mesh.goto(face).calculate_face_normal();
-    let face_edges = mesh.goto(face).iter_loop().map(|e| (*e, e.vertex())).collect::<StackVec<_>>();
+    let face_edges = mesh.goto(face).iter_loop().map(|e| (*e, e.vertex(), *e.twin())).collect::<StackVec<_>>();
+    let is_origin_twin_boundary = mesh.goto(face).iter_loop().all(|e| e.twin().face().is_none());
     for edge in &face_edges {
         // Remove the face from edges so that we don't temporarily create a non-manifold mesh
         mesh[edge.0].face = None;
         // we will re-use the face_id to fill in the extruded face
+        if is_origin_twin_boundary {
+            // Pretend like outside edges have been filled with face to get face creation correct
+            mesh[edge.2].face = Some(default());
+        }
     }
+
     let new_verts = (0..face_edges.len()).map(|_| mesh.new_vertex()).collect::<StackVec<_>>();
     let v = new_verts[0]; // Save a new vertex to find its boundary edge later
-    let new_faces = face_edges.into_iter().zip(new_verts).circular_tuple_windows().map(|(((edge, v1), v2), ((_, v3), v4))| {
+    let new_faces = face_edges.iter().zip(new_verts).circular_tuple_windows().map(|((&(edge, v1, _), v2), (&(_, v3, _), v4))| {
         // We don't have remove us from next edge ahead because mesh.new_face doesn't modify or depend on twin edges
         let positions = mesh.attributes.get_mut(&super::attributes::AttributeKind::Positions).unwrap().as_vertices_vec3_mut();
         positions.insert(v2, positions[v1]+shift);
@@ -81,8 +87,12 @@ pub fn extrude(mesh:&mut HalfEdgeMesh, face:FaceId, length:f32) -> StackVec<Face
     for edge in old_face_goes_here {
         mesh[edge].face = Some(face);
     }
-    new_faces
-    
+    if is_origin_twin_boundary {
+        for (_, _, boundary) in face_edges {
+            mesh[boundary].face = None;
+        }
+    }
+    new_faces    
 }
 
 

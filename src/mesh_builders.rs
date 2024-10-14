@@ -1,10 +1,49 @@
-use bevy::{math::VectorSpace, prelude::{Cuboid, Vec2, Vec3}};
+use bevy::{math::VectorSpace, prelude::{Circle, Cuboid, Ellipse, Meshable, RegularPolygon, Vec2, Vec3}, render::mesh::{CircleMeshBuilder, EllipseMeshBuilder, RegularPolygonMeshBuilder}};
 use crate::mesh::{attributes::{AttributeKind, AttributeStore}, HalfEdgeId, HalfEdgeMesh, VertexId};
 
 /// A trait used for primitives toconstruct a [`HalfEdgeMesh`]
 pub trait HalfEdgeMeshBuilder {
     /// Generate am editable [`HalfEdgeMesh`]
     fn procgen(&self) -> HalfEdgeMesh;
+}
+
+impl HalfEdgeMeshBuilder for EllipseMeshBuilder {
+    fn procgen(&self) -> HalfEdgeMesh {
+        let mut mesh = HalfEdgeMesh::new();
+        let mut position_attribute:AttributeStore<VertexId, Vec3> = AttributeStore::new();
+        let mut polygon = Vec::with_capacity(self.resolution);
+        // Add pi/2 so that there is a vertex at the top (sin is 1.0 and cos is 0.0)
+        let start_angle = std::f32::consts::FRAC_PI_2;
+        let step = std::f32::consts::TAU / self.resolution as f32;
+
+        for i in 0..self.resolution {
+            // Compute vertex position at angle theta
+            let theta = start_angle + i as f32 * step;
+            let (sin, cos) = theta.sin_cos();
+            let x = cos * self.ellipse.half_size.x;
+            let y = sin * self.ellipse.half_size.y;
+            let v = mesh.new_vertex();
+            polygon.push(v);
+            position_attribute.insert(v, Vec3{x, y, z:0.0});
+        }
+        mesh.add_attribute(AttributeKind::Positions, position_attribute);
+        mesh.new_face(&polygon);
+        mesh
+
+    }
+}
+
+impl HalfEdgeMeshBuilder for RegularPolygon {
+    fn procgen(&self) -> HalfEdgeMesh {
+        Ellipse::new(self.circumcircle.radius, self.circumcircle.radius)
+            .mesh().resolution(self.sides).procgen()
+    }
+}
+
+impl HalfEdgeMeshBuilder for CircleMeshBuilder {
+    fn procgen(&self) -> HalfEdgeMesh {
+        RegularPolygon::new(self.circle.radius, self.resolution).procgen()
+    }
 }
 
 impl HalfEdgeMeshBuilder for Cuboid {
