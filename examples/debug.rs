@@ -1,6 +1,6 @@
 use core::f32;
 
-use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeQueries}, edge_ops, face_ops, mesh_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec}, mesh_builders::HalfEdgeMeshBuilder};
+use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeQueries, AttributeValues}, edge_ops, face_ops, mesh_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
 use camera_controls::{capture_mouse, FlyingCamera};
 use slotmap::{SecondaryMap};
 use smallvec::SmallVec;
@@ -10,18 +10,17 @@ pub fn cuboid_tests() -> HalfEdgeMesh {
 
     let mut mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
     let faces = mesh.face_keys().collect::<StackVec<_>>();
-    let face = faces[2];
-    face_ops::extrude(&mut mesh, face, 1.0);
-    let middle_face = mesh.goto(face).twin().next().twin().face();
-    face_ops::extrude(&mut mesh, face, 1.0);
-    face_ops::extrude(&mut mesh, middle_face.unwrap(), 1.0);
-    // let middle_halfedge = *middle_halfedge.twin();
-
-    mesh_ops::subdivide(&mut mesh);
-    mesh_ops::subdivide(&mut mesh);
-    mesh_ops::subdivide(&mut mesh);
-    mesh_ops::subdivide(&mut mesh);
-    println!("Face count: {}", mesh.face_count());
+    let face = faces[1];
+    face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:0.5, y:1.0, z:0.5}));
+    face_ops::extrude(&mut mesh, face, 0.33);
+    face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:0.75, y:1.0, z:0.75}));
+    face_ops::extrude(&mut mesh, face, 0.33);
+    face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:1.25, y:1.0, z:1.25}));
+    face_ops::extrude(&mut mesh, face, 0.33);
+    face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:2.0, y:1.0, z:2.0}));
+    // let face_vertices = mesh.goto(face).iter_loop().map(|e| (e.vertex(), false)).collect::<StackVec<_>>();
+    // let sharp_edges:SecondaryMap<VertexId, bool> = SecondaryMap::from_iter(face_vertices);
+    // mesh.add_attribute(AttributeKind::Creases, AttributeValues::VertexBool(sharp_edges));
     mesh
 }
 

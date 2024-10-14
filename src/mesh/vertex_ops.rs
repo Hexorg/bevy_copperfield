@@ -1,7 +1,13 @@
+use bevy::prelude::Transform;
 use itertools::Itertools;
 
 
-use super::{edge_ops, face_ops, FaceId, HalfEdgeMesh, StackVec, VertexId};
+use super::{edge_ops, face_ops, selection::MeshSelection, FaceId, HalfEdgeMesh, StackVec, VertexId};
+
+pub fn transform(mesh:&mut HalfEdgeMesh, vertex:VertexId, transform:Transform) {
+    let positions = mesh.attributes.get_mut(&super::attributes::AttributeKind::Positions).unwrap().as_vertices_vec3_mut();
+    positions.insert(vertex, transform.transform_point(positions[vertex]));
+}
 
 /// Removes a vertex, either making a mesh boundary, or filling it up with a new face
 pub fn delete(mesh:&mut HalfEdgeMesh, vertex:VertexId, is_fill:bool) -> StackVec<Option<FaceId>> {

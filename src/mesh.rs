@@ -3,14 +3,14 @@
 use attributes::{AttributeKind, AttributeQueries, AttributeStore, AttributeValues, Attributes};
 use bevy::{prelude::{default, Vec2, Vec3}, render::{mesh::{self, Mesh as BevyMesh}, render_asset::RenderAssetUsages}, utils::hashbrown::HashSet};
 use itertools::Itertools;
-// use selection::Selection;
-use slotmap::{KeyData, SlotMap};
+use selection::Selection;
+use slotmap::{KeyData, SecondaryMap, SlotMap};
 use smallvec::SmallVec;
 use traversal::{Traversal, VertexFlow};
 
 pub mod attributes;
 mod traversal;
-// mod selection;
+mod selection;
 pub mod vertex_ops;
 pub mod edge_ops;
 pub mod face_ops;
@@ -29,21 +29,14 @@ pub enum MeshPosition{
     Face(FaceId)
 }
 
-#[derive(Clone, PartialEq, Eq)]
-/// A mononotous selection on a mesh, several edges, vertices, or faces, but not a mix. 
-pub enum MeshSelection{
-    Vertices(Vec<VertexId>),
-    HalfEdges(Vec<HalfEdgeId>),
-    Faces(Vec<FaceId>)
-}
-
 /// Trait that lets us convert some value to a specific HalfEdgeId
 /// Useful to let rays target exact part of the mesh 
 pub trait Targettable {
     /// Convert self to a [`HalfEdgeId`]. For example if a ray 
     /// points to this mesh this method is how you could aim at
     /// specific parts of a mesh
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId;
+    fn get_mesh_halfedge(self, mesh:&HalfEdgeMesh) -> HalfEdgeId;
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition;
 }
 
 slotmap::new_key_type! { 
@@ -83,27 +76,51 @@ impl FaceId {
 
 impl Targettable for HalfEdgeId {
     #[inline]
-    fn get_mesh_position(self, _:&HalfEdgeMesh) -> HalfEdgeId {
+    fn get_mesh_position(self, _:&HalfEdgeMesh) -> MeshPosition {
+        self.into()
+    }
+
+    fn get_mesh_halfedge(self, _:&HalfEdgeMesh) -> HalfEdgeId {
         self
     }
 }
 
 impl Targettable for VertexId {
     #[inline]
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition {
+        self.into()
+    }
+
+    fn get_mesh_halfedge(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
         mesh[self].halfedge
     }
 }
 
 impl Targettable for FaceId {
     #[inline]
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition {
+        self.into()
+    }
+    fn get_mesh_halfedge(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
         mesh[self].halfedge
     }
 }
 
 impl Targettable for Vec3 {
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition {
+        if let Some(attr) = mesh.attribute(&AttributeKind::Positions) {
+            // TODO: Allow aiming at edges and faces too
+            let (vertex, _) = attr.as_vertices_vec3().iter().fold((VertexId::default(), f32::MAX), |acc, p| {
+                    let distance = (*p.1 - self).length();
+                        if distance < acc.1 { (p.0, distance) } else { acc }
+                });
+                vertex.into()
+        } else {
+            MeshPosition::HalfEdge(default())
+        }
+    }
+
+    fn get_mesh_halfedge(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
         if let Some(attr) = mesh.attribute(&AttributeKind::Positions) {
             let (vertex, _) = attr.as_vertices_vec3().iter().fold((VertexId::default(), f32::MAX), |acc, p| {
                     let distance = (*p.1 - self).length();
@@ -140,12 +157,15 @@ impl MeshPosition {
 
 impl Targettable for MeshPosition {
     #[inline]
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
+    fn get_mesh_halfedge(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
         match self {
             MeshPosition::Vertex(vertex_id) => mesh[vertex_id].halfedge,
             MeshPosition::HalfEdge(half_edge_id) => half_edge_id,
             MeshPosition::Face(face_id) => mesh[face_id].halfedge,
         }
+    }
+    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition {
+        self
     }
 }
 
@@ -167,16 +187,6 @@ impl From<FaceId> for MeshPosition {
     #[inline]
     fn from(value: FaceId) -> Self {
         Self::Face(value)
-    }
-}
-
-impl From<MeshPosition> for MeshSelection {
-    fn from(value: MeshPosition) -> Self {
-        match value {
-            MeshPosition::Vertex(vertex_id) => Self::Vertices(vec![vertex_id]),
-            MeshPosition::HalfEdge(half_edge_id) => Self::HalfEdges(vec![half_edge_id]),
-            MeshPosition::Face(face_id) => Self::Faces(vec![face_id]),
-        }
     }
 }
 
@@ -285,14 +295,15 @@ impl HalfEdgeMesh {
     #[inline]
     /// Initiate traversal of the mesh starting at a given edge
     pub fn goto(&self, pos:impl Targettable) -> Traversal<'_> {
-        Traversal::new(self, pos.get_mesh_position(self))
+        Traversal::new(self, pos.get_mesh_halfedge(self))
     }
 
-    // #[inline]
-    // /// Go to a position and select it, allowing you to select more items to later act on as a group
-    // pub fn select(&self, pos: impl Targettable) -> Selection<'_> {
-    //     self.goto(pos).into()
-    // }
+    #[inline]
+    /// Go to a position and select it, allowing you to select more items to later act on as a group
+    pub fn select(&self, pos: impl Targettable + Copy) -> Selection<'_> {
+        let position = pos.get_mesh_position(self);
+        Selection::new(self.goto(pos), position)
+    }
 
     #[inline]
     pub fn new_vertex(&mut self) -> VertexId {
@@ -575,28 +586,41 @@ impl From<&HalfEdgeMesh> for BevyMesh {
         let mut normals = Vec::new();
         let mut uvs= Vec::new();
         let mut indices = Vec::new();
-        let position_data = mesh.attribute(&AttributeKind::Positions).unwrap().as_vertices_vec3();
+        let mut vertex_index_map:SecondaryMap<VertexId, u32> = SecondaryMap::new();
+        // TODO: Check if traversing adjacent faces first is better.
+        // Down side - checking adjacency now is slower on CPU
+        // But having indices with better locality might be better on GPU
         for face in mesh.faces.keys() { 
-            let halfedges:SmallVec<[_;6]> = mesh.goto(face).iter_loop().map(|f| (*f, f.vertex())).collect();
-            let mut index_mapping:SmallVec<[Option<usize>;6]> = SmallVec::new();
-            for _ in 0..halfedges.len() {
-                index_mapping.push(None);
-            }
-            let is_even = (halfedges.len() as i32 % 2) == 0;
+            let face_vertices:SmallVec<[_;6]> = mesh.goto(face).iter_loop().map(|f| f.vertex()).collect();
+
+            let is_even = (face_vertices.len() as i32 % 2) == 0;
             let mut start_index = 0;
-            let mut end_index = halfedges.len() as i32 - 1;
+            let mut end_index = face_vertices.len() - 1;
             // Triangulate theese polygons. TODO: Figure out better way. Most crates I found were for 2D
             while end_index > 0  {
-                let triangle = [start_index, start_index+1, end_index];
-                for local_index in triangle {
-                    if let Some(output_index) = index_mapping[local_index as usize] {
-                        indices.push(output_index as u32);
+                let triangle = [face_vertices[start_index], face_vertices[start_index+1], face_vertices[end_index]];
+                for vertex in triangle {
+                    if let Some(output_index) = vertex_index_map.get(vertex) {
+                        if mesh.goto(vertex).is_smooth_normals() {
+                            indices.push(*output_index);
+                        } else {
+                            let index = positions.len() as u32;
+                            indices.push(index);
+                            positions.push(mesh.goto(vertex).position().to_array());
+                            normals.push(mesh.goto(face).calculate_face_normal().to_array());
+                            uvs.push(Vec2::ZERO);
+                        }
                     } else {
-                        index_mapping[local_index as usize] = Some(positions.len());
-                        indices.push(positions.len() as u32);
-                        let (edge, vertex, ) = halfedges[local_index as usize];
-                        positions.push(position_data[vertex].to_array());
-                        normals.push(mesh.goto(face).calculate_face_normal().to_array());
+                        let index = positions.len() as u32;
+                        indices.push(index);
+                        vertex_index_map.insert(vertex, index);
+                        let v = mesh.goto(vertex);
+                        positions.push(v.position().to_array());
+                        if mesh.goto(vertex).is_smooth_normals() {
+                            normals.push(v.calculate_smooth_normal().to_array());
+                        } else {
+                            normals.push(mesh.goto(face).calculate_face_normal().to_array());
+                        }
                         uvs.push(Vec2::ZERO);
                     }
                 }

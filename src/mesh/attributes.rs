@@ -11,7 +11,8 @@ pub enum AttributeKind {
     Positions,
     Normals,
     UVs,
-    Indices
+    Indices,
+    Creases
 }
 
 
@@ -19,6 +20,7 @@ pub type AttributeStore<K, T> = SecondaryMap<K, T>;
 pub enum AttributeValues {
     VertexU32(AttributeStore<VertexId, u32>),
     VertexVec3(AttributeStore<VertexId, Vec3>),
+    VertexBool(AttributeStore<VertexId, bool>),
     EdgeVec2(AttributeStore<HalfEdgeId, Vec2>),
     EdgeVec3(AttributeStore<HalfEdgeId, Vec3>)
 }
@@ -41,6 +43,20 @@ impl AttributeValues {
     pub fn as_vertices_vec3_mut(&mut self) -> &mut AttributeStore<VertexId, Vec3> {
         match self {
             Self::VertexVec3(v) => v,
+            _ => panic!("Unexpected attribute kind")
+        }
+    }
+
+    pub fn as_vertices_bool(&self) -> &AttributeStore<VertexId, bool> {
+        match self {
+            Self::VertexBool(v) => v,
+            _ => panic!("Unexpected attribute kind")
+        }
+    }
+
+    pub fn as_vertices_bool_mut(&mut self) -> &mut AttributeStore<VertexId, bool> {
+        match self {
+            Self::VertexBool(v) => v,
             _ => panic!("Unexpected attribute kind")
         }
     }
@@ -95,6 +111,8 @@ pub trait AttributeQueries{
     fn calculate_face_normal(&self) -> Vec3;
     /// Get average of adjacent face's normals
     fn calculate_smooth_normal(&self) -> Vec3;
+    /// Uses AttributeKind::Creases to tell if the vertex is supposed to use smooth normals or sharp
+    fn is_smooth_normals(&self) -> bool;
 }
 
 impl<'m> AttributeQueries for Traversal<'m> {
@@ -124,5 +142,13 @@ impl<'m> AttributeQueries for Traversal<'m> {
     fn calculate_smooth_normal(&self) -> Vec3 {
         let (sum, count) = self.adjacent_faces().map(|t| t.calculate_face_normal()).fold((Vec3::ZERO, 0.0), |acc, i| (acc.0 + i, acc.1 + 1.0));
         sum / count
+    }
+
+    fn is_smooth_normals(&self) -> bool {
+        if let Some(store) = self.mesh.attribute(&super::attributes::AttributeKind::Creases) {
+            store.as_vertices_bool().get(self.vertex()).copied().unwrap_or(true)
+        } else {
+            true
+        }
     }
 }
