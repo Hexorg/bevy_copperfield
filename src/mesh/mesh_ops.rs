@@ -4,7 +4,7 @@ use slotmap::SecondaryMap;
 
 use crate::mesh::attributes::{AttributeQueries, AttributeKind};
 
-use super::{edge_ops, FaceId, HalfEdgeId, HalfEdgeMesh};
+use super::{edge_ops, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
 
 /// Catmull-Clark subdivision. 
 /// Based on [Wikipedia Article](https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface)
@@ -14,28 +14,32 @@ pub fn subdivide(mesh:&mut HalfEdgeMesh) {
     let original_vertices = mesh.vertex_keys().collect::<HashSet<_>>();
     // let positions = mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3();
     // Populate face_points
-    for face in mesh.faces.keys().collect::<Vec<_>>() {
-        let (sum, count) = mesh.goto(face).iter_loop().fold((Vec3::ZERO,0.0_f32), |acc, v| (acc.0 + v.position(), acc.1 + 1.0));
+    for face in mesh.faces.keys() {
+        let fp = mesh.goto(face).calculate_face_point();
         // positions.insert(vertex, );
-        face_points.insert(face, sum/count);
+        face_points.insert(face, fp);
         // mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3_mut().insert(vertex, sum/count);
     }
+
+    let mut split_vertices:HashSet<VertexId> = HashSet::new();
+
 
     // Populate edge_points
     for edge in mesh.halfedges.keys().collect::<Vec<_>>() {
         if !edge_points.contains_key(edge) {
             let e = mesh.goto(edge);
             let a = e.position();
-            let m = e.face().map(|f| face_points[f]).unwrap_or_default();
+            let (m, n) = e.face().map(|f| (face_points[f], 1.0)).unwrap_or((Vec3::ZERO, 0.0));
             let twin = e.twin();
             let f = twin.position();
-            let e = twin.face().map(|f| face_points[f]).unwrap_or_default();
+            let (e, n2) = twin.face().map(|f| (face_points[f], 1.0)).unwrap_or((Vec3::ZERO, 0.0));
             let twin = *twin;
-            // let vertex = edge_ops::split(mesh, edge, 0.5);
+            let vertex = edge_ops::split(mesh, edge, 0.5);
+            split_vertices.insert(vertex);
             // let vertex = mesh.new_vertex();
-            edge_points.insert(edge, (a+f+m+e)/4.0);
-            edge_points.insert(twin, (a+f+m+e)/4.0);
-            // mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3_mut().insert(vertex, (a+f+m+e)/4.0);
+            edge_points.insert(edge, (a+f+m+e)/(n+n2+2.0));
+            edge_points.insert(twin, (a+f+m+e)/(n+n2+2.0));
+            mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3_mut().insert(vertex, (a+f+m+e)/4.0);
         }
     }
 
@@ -45,10 +49,32 @@ pub fn subdivide(mesh:&mut HalfEdgeMesh) {
         let f = sum / nf;
         let (sum, ne) = mesh.goto(vertex).iter_outgoing().fold((Vec3::ZERO, 0.0_f32), |acc, i| (acc.0 + *edge_points.get(*i).unwrap_or_else(|| edge_points.get(*i.next()).unwrap()), acc.1+1.0));
         let r = sum / ne;
-        // assert_eq!(nf, ne);
-        // println!("nf: {nf:?}, ne:{ne:?}");
-        let new_position = (f+2.0*r+(nf.max(3.0)-3.0)*p)/nf;
+        let n = nf.max(ne);
+        let new_position = (f+2.0*r+(n-3.0)*p)/n;
         mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3_mut().insert(vertex, new_position);
+    }
+
+    for (face, face_point) in face_points {
+        // println!("** subdivide(): Face {face:?}");
+        let split_halfedge_start = if split_vertices.contains(&mesh.goto(face).vertex()) {
+            mesh.goto(face).halfedge()
+        } else {
+            mesh.goto(face).next().halfedge()
+        };
+        let face_vertex = mesh.new_vertex();
+        mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3_mut().insert(face_vertex, face_point);
+        for edge in mesh.goto(face).iter_loop().map(|t| *t).collect::<StackVec<_>>() {
+            mesh[edge].face = None;
+        }
+        mesh.faces.remove(face);
+        let tuples = mesh.goto(split_halfedge_start).iter_loop().map(|t| t.vertex()).tuples::<(VertexId, VertexId)>().collect::<StackVec<_>>();
+        for (&(split, original), &(split_next, _)) in tuples.iter().circular_tuple_windows() {
+            let new_face = [split, original, split_next, face_vertex];
+            // println!("\tsubdivided into new face: {new_face:?}");
+            mesh.new_face(&new_face);
+            // break;
+        }
+        // if face == FaceId::from_ffi(1) { break }
     }
 
     // todo!("Figure out how to split mesh")

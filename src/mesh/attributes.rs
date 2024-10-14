@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 
 use bevy::prelude::{Vec2, Vec3};
+use itertools::Itertools;
 use slotmap::SecondaryMap;
 
-use super::{traversal::Traversal, HalfEdgeId, VertexId};
+use super::{traversal::Traversal, HalfEdgeId, StackVec, VertexId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AttributeKind {
@@ -89,7 +90,11 @@ pub trait AttributeQueries{
     /// Get position of the associated vertex
     fn position(&self) -> Vec3;
     /// Get the average of all vertices of this face
-    fn face_point(&self) -> Vec3;
+    fn calculate_face_point(&self) -> Vec3;
+    /// Get normal of current face
+    fn calculate_face_normal(&self) -> Vec3;
+    /// Get average of adjacent face's normals
+    fn calculate_smooth_normal(&self) -> Vec3;
 }
 
 impl<'m> AttributeQueries for Traversal<'m> {
@@ -98,9 +103,26 @@ impl<'m> AttributeQueries for Traversal<'m> {
         let values = self.mesh.attribute(&super::attributes::AttributeKind::Positions).expect("Vertices don't have position attribute.");
         values.as_vertices_vec3().get(vertex).copied().unwrap()
     }
-    fn face_point(&self) -> Vec3 {
+    fn calculate_face_point(&self) -> Vec3 {
         // We keep count since we don't know ahead of time the amount of face edges
         let (sum, count) = self.iter_loop().fold((Vec3::ZERO, 0.0), |acc, i| (acc.0 + i.position(), acc.1 + 1.0));
+        sum / count
+    }
+    fn calculate_face_normal(&self) -> Vec3 {
+        for (v1, v2, v3) in self
+            .iter_loop()
+            .map(|f| f.position()).collect::<StackVec<_>>().iter().circular_tuple_windows() {
+            let left = *v1 - *v2;
+            let right = *v2 - *v3;
+            let normal = left.cross(right).normalize();
+            if !normal.is_nan() {
+                return normal
+            }
+        }
+        Vec3::ZERO
+    }
+    fn calculate_smooth_normal(&self) -> Vec3 {
+        let (sum, count) = self.adjacent_faces().map(|t| t.calculate_face_normal()).fold((Vec3::ZERO, 0.0), |acc, i| (acc.0 + i, acc.1 + 1.0));
         sum / count
     }
 }

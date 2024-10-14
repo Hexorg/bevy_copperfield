@@ -12,27 +12,16 @@ pub fn cuboid_tests() -> HalfEdgeMesh {
     let faces = mesh.face_keys().collect::<StackVec<_>>();
     let face = faces[2];
     face_ops::extrude(&mut mesh, face, 1.0);
-    let middle_halfedge1 = mesh.goto(face).twin().next();
-    let middle_halfedge2 = middle_halfedge1.next().next().twin();
-    let middle_halfedge3 = middle_halfedge2.next().next().twin();
-    let middle_halfedge4 = middle_halfedge3.next().next().twin();
-    // let middle_vertex = middle_/halfedge.get_vertex().unwrap();
-
-    let middle_halfedge1 = *middle_halfedge1;
-    let middle_halfedge2 = *middle_halfedge2;
-    let middle_halfedge3= *middle_halfedge3;
-    let middle_halfedge4 = *middle_halfedge4;
-
-
-    // let middle_halfedge = *middle_halfedge.twin();
+    let middle_face = mesh.goto(face).twin().next().twin().face();
     face_ops::extrude(&mut mesh, face, 1.0);
-    // println!("{middle_halfedge:?}");
-    edge_ops::chamfer(&mut mesh, middle_halfedge1, 0.25);
-    edge_ops::chamfer(&mut mesh, middle_halfedge2, 0.25);
-    edge_ops::chamfer(&mut mesh, middle_halfedge3, 0.25);
-    edge_ops::chamfer(&mut mesh, middle_halfedge4, 0.25);
+    face_ops::extrude(&mut mesh, middle_face.unwrap(), 1.0);
+    // let middle_halfedge = *middle_halfedge.twin();
 
     mesh_ops::subdivide(&mut mesh);
+    mesh_ops::subdivide(&mut mesh);
+    mesh_ops::subdivide(&mut mesh);
+    mesh_ops::subdivide(&mut mesh);
+    println!("Face count: {}", mesh.face_count());
     mesh
 }
 
@@ -42,12 +31,13 @@ pub fn sample_mesh_tests() -> HalfEdgeMesh {
     let face = vertex_ops::chamfer(&mut mesh, v[2], 0.25);
     face_ops::extrude(&mut mesh, face, 0.5);
     mesh_ops::subdivide(&mut mesh);
+    mesh_ops::subdivide(&mut mesh);
     mesh
 }
 
 pub fn build_mesh() -> HalfEdgeMesh {   
-    // cuboid_tests()
-    sample_mesh_tests()
+    cuboid_tests()
+    // sample_mesh_tests()
 }
 
 
@@ -260,10 +250,10 @@ fn get_edge_pos(edge:HalfEdgeId, mesh:&HalfEdgeMesh) -> (Vec3, Vec3) {
     let direction = distance_to_end.normalize();
     let distance_to_end = distance_to_end.length();
     let shift = OFFSET*if edge.face().is_some() {
-        get_face_center_pos(*edge, mesh) - start //+ mesh.face_normal(edge.get_face().unwrap().unwrap())
+        get_face_center_pos(*edge, mesh) - start + OFFSET*edge.calculate_face_point()
     } else {
-        start - get_face_center_pos(*edge.twin(), mesh)
-    }.normalize();
+        -(get_face_center_pos(*edge.twin(), mesh) - start)
+    };
     // let  end = start.lerp(to, LENGTH);
     (start+shift, start+shift+LENGTH*distance_to_end*direction)
 }
@@ -272,6 +262,11 @@ fn draw_edge_gizmos(mesh:Res<DebugMesh>, mut gizmos:Gizmos) {
     for edge in mesh.edge_keys() {
         let (start, end) = get_edge_pos(edge, &mesh.0);
         gizmos.arrow(start, end, EDGE_COLOR);
+        // Draw lines towards face center
+        // if mesh[edge].face.is_some() {
+        //     let face_center = get_face_center_pos(edge, &mesh.0);
+        //     gizmos.line(start, face_center, FACE_COLOR);
+        // }
         let start = mesh.goto(edge).position();
         let end = mesh.goto(edge).twin().position();
         gizmos.line(start, end, RIB_COLOR);
@@ -286,7 +281,7 @@ fn move_labels_to_with_camera(mut transform:Query<(&mut Style, &HalfMeshLabelKey
     for (mut t, &key) in &mut transform {
         if state.get() == &GizmoState::Draw {
             let pos = match key.0 {
-                MeshPosition::Vertex(vertex_id) => mesh.goto(vertex_id).position(),
+                MeshPosition::Vertex(vertex_id) => mesh.attribute(&AttributeKind::Positions).unwrap().as_vertices_vec3().get(vertex_id).copied().unwrap_or_default(),
                 MeshPosition::HalfEdge(half_edge_id) => get_edge_pos(half_edge_id, &mesh.0).1,
                 MeshPosition::Face(face_id) => get_face_center_pos(*mesh.goto(face_id), &mesh.0),
             };

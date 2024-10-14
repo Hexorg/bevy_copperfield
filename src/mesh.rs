@@ -1,6 +1,6 @@
 
 
-use attributes::{AttributeKind, AttributeStore, AttributeValues, Attributes};
+use attributes::{AttributeKind, AttributeQueries, AttributeStore, AttributeValues, Attributes};
 use bevy::{prelude::{default, Vec2, Vec3}, render::{mesh::{self, Mesh as BevyMesh}, render_asset::RenderAssetUsages}, utils::hashbrown::HashSet};
 use itertools::Itertools;
 // use selection::Selection;
@@ -448,35 +448,6 @@ impl HalfEdgeMesh {
         }
         face_id
     }
-    
-    // Returns the normal of the face. The first three vertices are used to
-    // compute the normal. If the vertices of the face are not coplanar,
-    // the result will not be correct.
-    pub fn face_normal(&self, face: FaceId) -> Vec3 {
-        let positions = self.attributes[&AttributeKind::Positions].as_vertices_vec3();
-        let verts:StackVec<_> = self.goto(face)
-            .iter_loop()
-            .map(|f| positions[f.vertex()]).collect();
-        for idx in 0..(verts.len()-2) {
-            let v01 = verts[idx] - verts[idx+1];
-            let v12 = verts[idx+1] - verts[idx+2];
-            let normal = v01.cross(v12).normalize();
-            if !normal.is_nan() {
-                return normal
-            }
-        }
-        Vec3::ZERO
-    }
-
-    pub fn get_normal(&self, edge:HalfEdgeId) -> Vec3 {
-        // TODO: Get this from edge data instead
-        self.face_normal(self[edge].face.unwrap())
-    }
-
-    pub fn get_uv(&self, edge:HalfEdgeId) -> Vec2 {
-        // TODO: Oh boy, UV Mapping
-        Vec2::ZERO
-    }
 
     /// How many faces are currently allocated
     pub fn face_count(&self) -> usize {
@@ -625,8 +596,8 @@ impl From<&HalfEdgeMesh> for BevyMesh {
                         indices.push(positions.len() as u32);
                         let (edge, vertex, ) = halfedges[local_index as usize];
                         positions.push(position_data[vertex].to_array());
-                        normals.push(mesh.face_normal(face).to_array());
-                        uvs.push(mesh.get_uv(edge));
+                        normals.push(mesh.goto(face).calculate_face_normal().to_array());
+                        uvs.push(Vec2::ZERO);
                     }
                 }
                 end_index -= 1;

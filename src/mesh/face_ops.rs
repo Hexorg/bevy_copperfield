@@ -1,6 +1,6 @@
 use itertools::Itertools;
 
-use super::{Face, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
+use super::{attributes::AttributeQueries, Face, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
 
 /// Removes a vertex, either making a mesh boundary, or filling it up with a new face
 pub fn delete(mesh:&mut HalfEdgeMesh, face:FaceId) {
@@ -50,7 +50,7 @@ pub fn split(mesh:&mut HalfEdgeMesh, v:VertexId, w:VertexId) -> HalfEdgeId {
 }
 
 pub fn extrude(mesh:&mut HalfEdgeMesh, face:FaceId, length:f32) -> StackVec<FaceId> {
-    let shift = length*mesh.face_normal(face);
+    let shift = length*mesh.goto(face).calculate_face_normal();
     let face_edges = mesh.goto(face).iter_loop().map(|e| (*e, e.vertex())).collect::<StackVec<_>>();
     for edge in &face_edges {
         // Remove the face from edges so that we don't temporarily create a non-manifold mesh
