@@ -379,7 +379,6 @@ impl HalfEdgeMesh {
             if self.halfedges.contains_key(self[end].halfedge) {
                 end_flows.extend(self.goto(end).get_flow(None));
             };
-            println!("** new_face: start_flow: {start_flows:?}\n\tend_flow: {end_flows:?}");
             let mut selected_start_flow:Option<VertexFlow> = None; 
             let mut selected_end_flow:Option<VertexFlow> = None;
             let mut is_existing_edge = false;
@@ -388,13 +387,11 @@ impl HalfEdgeMesh {
             for start_flow in &start_flows {
                 for end_flow in &end_flows {
                     if start_flow.outgoing == end_flow.incoming && self.halfedges.contains_key(start_flow.outgoing) {
-                        println!("\tstart_flow.outgoing == end_flow.incoming. It's an existing edge");
                         is_existing_edge = true;
                         face_edges.push(start_flow.outgoing);
                         break;
                     }
                     if end_flow.outgoing == start_flow.incoming && self.halfedges.contains_key(end_flow.outgoing) {
-                        panic!("{start:?} and {end:?} vertices are already connected in the opposite winding");
                     }
                     if let Some(&first_face_edge) = face_edges.first() {
                         if end_flow.outgoing == first_face_edge {
@@ -423,12 +420,10 @@ impl HalfEdgeMesh {
                 }
                 let edge = match (selected_start_flow, selected_end_flow) {
                     (Some(start_flow), Some(end_flow)) => {
-                        println!("\tAttaching two boundary vertices");
                         let (edge, _) = self.attach_edge(start_flow.incoming, end_flow.outgoing);
                         edge
                     },
                     (Some(start_flow), None) => { // == * == *
-                        println!("\tAttaching boundary vertex flow {start_flow:?} to a newly created vertex");
                         let (edge, twin) = self.new_edge(
                             HalfEdge {vertex:start, face:self[start_flow.incoming].face, ..default()}, 
                             HalfEdge {next:start_flow.outgoing, vertex:end, face:self[start_flow.outgoing].face, ..default()}
@@ -440,7 +435,6 @@ impl HalfEdgeMesh {
                         edge
                     },
                     (None, Some(end_flow)) => { // * == * ==
-                        println!("\tAttaching new vertex to a boundary vertex flow {end_flow:?}");
                         let (edge, twin) = self.new_edge(
                             HalfEdge{next:end_flow.outgoing, vertex:start, face:self[end_flow.outgoing].face, ..default()},
                             HalfEdge{vertex:end, face:self[end_flow.incoming].face, ..default()}
@@ -450,7 +444,6 @@ impl HalfEdgeMesh {
                         edge
                     },
                     (None, None) => {
-                        println!("\tAttaching two new vertices");
                         if self.halfedges.contains_key(self[start].halfedge) && self[self[start].halfedge].vertex == start || self.halfedges.contains_key(self[end].halfedge) && self[self[end].halfedge].vertex == end {
                             panic!("No boundary edges found but vertices {start:?} or {end:?} contain non-boundary edges. You're trying to create a non-manifold. Unable to continue.");
                         }
@@ -460,7 +453,6 @@ impl HalfEdgeMesh {
                         edge
                     }
                 };
-                println!("\tCreated edge {edge:?}");
                 face_edges.push(edge);
             }
         }
