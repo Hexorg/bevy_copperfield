@@ -554,6 +554,62 @@ impl HalfEdgeMesh {
             println!("\t{id:?} -> twin:{twin:?} next:{next:?} {vertex:?} {face:?}");
         }
     }
+
+    pub fn join(&mut self, other:&HalfEdgeMesh) {
+        let mut edge_map:SecondaryMap<HalfEdgeId, HalfEdgeId> = SecondaryMap::new();
+        let mut face_map:SecondaryMap<FaceId, FaceId> = SecondaryMap::new();
+        let mut vertex_map:SecondaryMap<VertexId, VertexId> = SecondaryMap::new();
+
+        for face_id in other.face_keys() {
+            face_map.insert(face_id, self.faces.insert(default()));
+        }
+        for vertex_id in other.vertex_keys() {
+            vertex_map.insert(vertex_id, self.vertices.insert(default()));
+        }
+        for edge_id in other.edge_keys() {
+            let mut halfedge = other.halfedges[edge_id];
+            halfedge.vertex = vertex_map[halfedge.vertex];
+            halfedge.face.iter_mut().for_each(|f| *f = face_map[*f]);
+            let new_id = self.halfedges.insert(halfedge);
+            self.vertices[halfedge.vertex].halfedge = new_id;
+            halfedge.face.and_then(|f| Some(self.faces[f].halfedge = new_id));
+            edge_map.insert(edge_id, new_id);
+        }
+        for edge_id in other.edge_keys() {
+            let new_id = edge_map[edge_id];
+            self[new_id].next = edge_map[self[new_id].next];
+            self[new_id].twin = edge_map[self[new_id].twin];
+        }
+        for (kind, values) in &other.attributes {
+            let store = self.attributes.entry(*kind).or_insert_with(|| match values {
+                AttributeValues::VertexU32(_) => AttributeValues::VertexU32(SecondaryMap::<VertexId, u32>::new()),
+                AttributeValues::VertexVec3(_) => AttributeValues::VertexVec3(SecondaryMap::<VertexId, Vec3>::new()),
+                AttributeValues::VertexBool(_) => AttributeValues::VertexBool(SecondaryMap::<VertexId, bool>::new()),
+                AttributeValues::EdgeVec2(_) => AttributeValues::EdgeVec2(SecondaryMap::<HalfEdgeId, Vec2>::new()),
+                AttributeValues::EdgeVec3(_) => AttributeValues::EdgeVec3(SecondaryMap::<HalfEdgeId, Vec3>::new())
+            });
+            match values {
+                AttributeValues::VertexU32(secondary_map) => for (old_key, &value) in secondary_map {
+                    store.as_vertices_u32_mut().insert(vertex_map[old_key], value);
+                },
+                AttributeValues::VertexVec3(secondary_map) => for (old_key, &value) in secondary_map {
+                    store.as_vertices_vec3_mut().insert(vertex_map[old_key], value);
+                },
+                AttributeValues::VertexBool(secondary_map) => for (old_key, &value) in secondary_map {
+                    store.as_vertices_bool_mut().insert(vertex_map[old_key], value);
+                },
+                AttributeValues::EdgeVec2(secondary_map) => for (old_key, &value) in secondary_map {
+                    store.as_edge_vec2_mut().insert(edge_map[old_key], value);
+                },
+                AttributeValues::EdgeVec3(secondary_map) => for (old_key, &value) in secondary_map {
+                    store.as_edge_vec3_mut().insert(edge_map[old_key], value);
+                },
+            }
+        }
+        if self.is_smooth != other.is_smooth {
+            todo!("Can't join two meshes with different smoothing settings.")
+        }
+    }
 }
 
 

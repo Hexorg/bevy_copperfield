@@ -33,6 +33,13 @@ impl AttributeValues {
         }
     }
 
+    pub fn as_vertices_u32_mut(&mut self) -> &mut AttributeStore<VertexId, u32> {
+        match self {
+            Self::VertexU32(v) => v,
+            _ => panic!("Unexpected attribute kind")
+        }
+    }
+
     pub fn as_vertices_vec3(&self) -> &AttributeStore<VertexId, Vec3> {
         match self {
             Self::VertexVec3(v) => v,
@@ -67,7 +74,19 @@ impl AttributeValues {
             _ => panic!("Unexpected attribute kind")
         }
     }
+    pub fn as_edge_vec2_mut(&mut self) -> &mut AttributeStore<HalfEdgeId, Vec2> {
+        match self {
+            Self::EdgeVec2(v) => v,
+            _ => panic!("Unexpected attribute kind")
+        }
+    }
     pub fn as_edge_vec3(&self) -> &AttributeStore<HalfEdgeId, Vec3> {
+        match self {
+            Self::EdgeVec3(v) => v,
+            _ => panic!("Unexpected attribute kind")
+        }
+    }
+    pub fn as_edge_vec3_mut(&mut self) -> &mut AttributeStore<HalfEdgeId, Vec3> {
         match self {
             Self::EdgeVec3(v) => v,
             _ => panic!("Unexpected attribute kind")

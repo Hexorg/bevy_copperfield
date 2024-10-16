@@ -1,10 +1,17 @@
-use bevy::{prelude::Vec3, utils::hashbrown::HashSet};
+use bevy::{prelude::{Transform, Vec3}, utils::hashbrown::HashSet};
 use itertools::Itertools;
 use slotmap::SecondaryMap;
 
 use crate::mesh::attributes::{AttributeQueries, AttributeKind};
 
 use super::{edge_ops, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
+
+pub fn transform(mesh:&mut HalfEdgeMesh, transform:Transform) {
+    let positions = mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3_mut();
+    for (_, position) in positions.iter_mut() {
+        *position = transform.transform_point(*position);
+    }
+}
 
 /// Catmull-Clark subdivision. 
 /// Based on [Wikipedia Article](https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface)
