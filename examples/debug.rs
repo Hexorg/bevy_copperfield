@@ -1,6 +1,6 @@
 use core::f32;
 
-use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeQueries, AttributeValues}, edge_ops, face_ops, mesh_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
+use bevy_copperfield::{mesh::{attributes::{AttributeKind, TraversalQueries, AttributeValues}, edge_ops, face_ops, mesh_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
 use camera_controls::{capture_mouse, FlyingCamera};
 use slotmap::{SecondaryMap};
 use smallvec::SmallVec;
@@ -26,11 +26,12 @@ pub fn cuboid_tests() -> HalfEdgeMesh {
 
 pub fn sample_mesh_tests() -> HalfEdgeMesh {
     let mut mesh = sample_mesh();
+    mesh.set_smooth(false);
     let v = mesh.vertex_keys().collect::<SmallVec<[_;9]>>();
     let face = vertex_ops::chamfer(&mut mesh, v[2], 0.25);
     face_ops::extrude(&mut mesh, face, 0.5);
-    mesh_ops::subdivide(&mut mesh);
-    mesh_ops::subdivide(&mut mesh);
+    // mesh_ops::subdivide(&mut mesh);
+    // mesh_ops::subdivide(&mut mesh);
     mesh
 }
 
@@ -46,8 +47,8 @@ pub fn builder_tests() -> HalfEdgeMesh {
 
 pub fn build_mesh() -> HalfEdgeMesh {   
     // cuboid_tests()
-    // sample_mesh_tests()
-    builder_tests()
+    sample_mesh_tests()
+    // builder_tests()
 }
 
 
@@ -260,7 +261,7 @@ fn get_edge_pos(edge:HalfEdgeId, mesh:&HalfEdgeMesh) -> (Vec3, Vec3) {
     let direction = distance_to_end.normalize();
     let distance_to_end = distance_to_end.length();
     let shift = OFFSET*if edge.face().is_some() {
-        get_face_center_pos(*edge, mesh) - start + OFFSET*edge.calculate_face_normal()
+        get_face_center_pos(*edge, mesh) - start + OFFSET*edge.calculate_least_squares_normal().unwrap()
     } else {
         -(get_face_center_pos(*edge.twin(), mesh) - start)
     };

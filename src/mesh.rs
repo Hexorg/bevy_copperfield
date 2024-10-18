@@ -1,6 +1,6 @@
 
 
-use attributes::{AttributeKind, AttributeQueries, AttributeStore, AttributeValues, Attributes};
+use attributes::{AttributeKind, AttributeStore, AttributeValues, Attributes, SelectionQueries, TraversalQueries};
 use bevy::{prelude::{default, Vec2, Vec3}, render::{mesh::{self, Mesh as BevyMesh}, render_asset::RenderAssetUsages}, utils::hashbrown::HashSet};
 use itertools::Itertools;
 use selection::Selection;
@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 use traversal::{Traversal, VertexFlow};
 
 pub mod attributes;
-mod traversal;
+pub(crate) mod traversal;
 mod selection;
 pub mod vertex_ops;
 pub mod edge_ops;
@@ -17,7 +17,7 @@ pub mod face_ops;
 pub mod mesh_ops;
 
 
-use crate::OPTIMIZE_FOR_NGONS_UNDER_SIZE;
+use crate::{uvmesh::UVMeshQueries, OPTIMIZE_FOR_NGONS_UNDER_SIZE};
 
 pub type StackVec<T> = SmallVec<[T;OPTIMIZE_FOR_NGONS_UNDER_SIZE]>;
 
@@ -671,7 +671,7 @@ impl From<&HalfEdgeMesh> for BevyMesh {
                             let index = positions.len() as u32;
                             indices.push(index);
                             positions.push(mesh.goto(vertex).position().to_array());
-                            normals.push(mesh.goto(face).calculate_face_normal().to_array());
+                            normals.push(mesh.select(face).calculate_least_squares_normal().unwrap().to_array());
                             uvs.push(Vec2::ZERO);
                         }
                     } else {
@@ -679,11 +679,12 @@ impl From<&HalfEdgeMesh> for BevyMesh {
                         indices.push(index);
                         vertex_index_map.insert(vertex, index);
                         let v = mesh.goto(vertex);
-                        positions.push(v.position().to_array());
+                        let pos = v.position();
+                        positions.push(pos.to_array());
                         if mesh.goto(vertex).is_smooth_normals() {
-                            normals.push(v.calculate_smooth_normal().to_array());
+                            normals.push(v.select_vertex().calculate_smooth_normal().to_array());
                         } else {
-                            normals.push(mesh.goto(face).calculate_face_normal().to_array());
+                            normals.push(mesh.select(face).calculate_least_squares_normal().unwrap().to_array());
                         }
                         uvs.push(Vec2::ZERO);
                     }

@@ -449,7 +449,6 @@ dependencies = [
  "bevy",
  "itertools",
  "noise",
- "num-traits",
  "slotmap",
  "smallvec",
 ]

@@ -2,7 +2,7 @@
 use bevy::prelude::{default, Deref, DerefMut};
 
 
-use super::{FaceId, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId};
+use super::{selection::Selection, FaceId, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId};
 
 const TRAVERSAL_LOOP_LIMIT:usize = 32; // We really don't expect more than TRAVERSAL_LOOP_LIMIT-gons or more than TRAVERSAL_LOOP_LIMIT edges coming out of a vertex
 
@@ -115,6 +115,24 @@ impl<'m> Traversal<'m> {
             panic!("Created Traversal with invalid position");
         };
         Self{mesh, position}
+    }
+
+    /// Convert current position into vertex selection
+    pub fn select_vertex(self) -> Selection<'m> {
+        let selection = MeshPosition::Vertex(self.vertex());
+        Selection::new(self, selection.into())
+    }
+
+    /// Convert current position into halfedge selection
+    pub fn select_edge(self) -> Selection<'m> {
+        let selection = MeshPosition::HalfEdge(self.position);
+        Selection::new(self, selection.into())
+    }
+
+    /// Convert current position into face selection. Panics if current position is boundary
+    pub fn select_face(self) -> Selection<'m> {
+        let selection = MeshPosition::Face(self.face().unwrap());
+        Selection::new(self, selection.into())
     }
 
     /// Get current vertex and scan over outgoing edges. If any of the edges land on `vertex` - return that edge.

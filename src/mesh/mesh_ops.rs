@@ -2,9 +2,9 @@ use bevy::{prelude::{Transform, Vec3}, utils::hashbrown::HashSet};
 use itertools::Itertools;
 use slotmap::SecondaryMap;
 
-use crate::mesh::attributes::{AttributeQueries, AttributeKind};
+use crate::mesh::attributes::{TraversalQueries, AttributeKind};
 
-use super::{edge_ops, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
+use super::{attributes::SelectionQueries, edge_ops, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
 
 pub fn transform(mesh:&mut HalfEdgeMesh, transform:Transform) {
     let positions = mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3_mut();
@@ -22,7 +22,7 @@ pub fn subdivide(mesh:&mut HalfEdgeMesh) {
     // let positions = mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3();
     // Populate face_points
     for face in mesh.faces.keys() {
-        let fp = mesh.goto(face).calculate_face_point();
+        let fp = mesh.select(face).calculate_centroid();
         // positions.insert(vertex, );
         face_points.insert(face, fp);
         // mesh.attributes.get_mut(&AttributeKind::Positions).unwrap().as_vertices_vec3_mut().insert(vertex, sum/count);

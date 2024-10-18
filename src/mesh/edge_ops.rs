@@ -5,7 +5,7 @@ use smallvec::SmallVec;
 
 use crate::mesh::vertex_ops;
 
-use super::{attributes::{AttributeKind, AttributeQueries}, face_ops, FaceId, HalfEdge, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
+use super::{attributes::{AttributeKind, TraversalQueries}, face_ops, FaceId, HalfEdge, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
 
 
 

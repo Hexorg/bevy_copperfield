@@ -1,7 +1,7 @@
 use bevy::prelude::{default, Transform};
 use itertools::Itertools;
 
-use super::{attributes::AttributeQueries, Face, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
+use super::{attributes::{SelectionQueries, TraversalQueries}, Face, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
 
 pub fn transform(mesh:&mut HalfEdgeMesh, face:FaceId, transform:Transform) {
     let verticies = mesh.goto(face).iter_loop().map(|e| e.vertex()).collect::<StackVec<_>>();
@@ -60,7 +60,7 @@ pub fn split(mesh:&mut HalfEdgeMesh, v:VertexId, w:VertexId) -> HalfEdgeId {
 }
 
 pub fn extrude(mesh:&mut HalfEdgeMesh, face:FaceId, length:f32) -> StackVec<FaceId> {
-    let shift = length*mesh.goto(face).calculate_face_normal();
+    let shift = length*mesh.select(face).calculate_least_squares_normal().unwrap();
     let face_edges = mesh.goto(face).iter_loop().map(|e| (*e, e.vertex(), *e.twin())).collect::<StackVec<_>>();
     let is_origin_twin_boundary = mesh.goto(face).iter_loop().all(|e| e.twin().face().is_none());
     for edge in &face_edges {

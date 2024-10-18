@@ -53,6 +53,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    assets:Res<AssetServer>,
 ) {
     // circular base
     commands.spawn(PbrBundle {
@@ -64,7 +65,7 @@ fn setup(
 
     commands.spawn((PbrBundle {
         mesh: meshes.add(&make_fence(8.0)),
-        material: materials.add(Color::srgb_u8(124, 144, 255)),
+        material: assets.load("bark.jpg"),
         transform: Transform::from_xyz(-4.0, 0.0, 0.0),
         ..default()
     }));
