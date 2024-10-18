@@ -1,6 +1,6 @@
 use core::f32;
 
-use bevy_copperfield::{mesh::{attributes::{AttributeKind, TraversalQueries, AttributeValues}, edge_ops, face_ops, mesh_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
+use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeValues, SelectionQueries, TraversalQueries}, edge_ops, face_ops, mesh_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId}, mesh_builders::HalfEdgeMeshBuilder, uvmesh::create_charts};
 use camera_controls::{capture_mouse, FlyingCamera};
 use slotmap::{SecondaryMap};
 use smallvec::SmallVec;
@@ -8,19 +8,17 @@ use bevy::{color, math::VectorSpace, prelude::*, render::{camera::ScalingMode, v
 
 pub fn cuboid_tests() -> HalfEdgeMesh {
 
-    let mut mesh = Cuboid::new(1.0, 0.33, 1.0).procgen();
+    let mut mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
+    mesh.set_smooth(false);
     let faces = mesh.face_keys().collect::<StackVec<_>>();
     let face = faces[1];
-    face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:0.5, y:1.0, z:0.5}));
-    face_ops::extrude(&mut mesh, face, 0.33);
-    face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:0.75, y:1.0, z:0.75}));
-    face_ops::extrude(&mut mesh, face, 0.33);
-    face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:1.25, y:1.0, z:1.25}));
-    face_ops::extrude(&mut mesh, face, 0.33);
-    face_ops::transform(&mut mesh, face, Transform::from_scale(Vec3{x:2.0, y:1.0, z:2.0}));
-    let face_vertices = mesh.goto(face).iter_loop().map(|e| (e.vertex(), false)).collect::<StackVec<_>>();
-    let sharp_edges:SecondaryMap<VertexId, bool> = SecondaryMap::from_iter(face_vertices);
-    mesh.add_attribute(AttributeKind::Creases, AttributeValues::VertexBool(sharp_edges));
+    face_ops::extrude(&mut mesh, face, 1.0);
+    face_ops::extrude(&mut mesh, face, 1.0);
+    let middle_face = mesh.goto(face).twin().next().face().unwrap();
+    face_ops::extrude(&mut mesh, middle_face, 1.0);
+    mesh_ops::subdivide(&mut mesh);
+    mesh_ops::subdivide(&mut mesh);
+    create_charts(&mut mesh);
     mesh
 }
 
@@ -46,8 +44,8 @@ pub fn builder_tests() -> HalfEdgeMesh {
 }
 
 pub fn build_mesh() -> HalfEdgeMesh {   
-    // cuboid_tests()
-    sample_mesh_tests()
+    cuboid_tests()
+    // sample_mesh_tests()
     // builder_tests()
 }
 
@@ -161,13 +159,14 @@ struct HelpText;
 
 const VERTEX_COLOR:Srgba = color::palettes::basic::WHITE;
 const EDGE_COLOR:Srgba = color::palettes::basic::AQUA;
+const UV_SEAM_EDGE_COLOR:Srgba = color::palettes::basic::RED;
 const RIB_COLOR:Srgba = color::palettes::basic::BLACK;
 const FACE_COLOR:Srgba = color::palettes::basic::BLUE;
 
 #[derive(States, Debug, Hash, Default, PartialEq, Eq, Clone, Copy)]
 pub enum GizmoState{
-    #[default]
     Draw,
+    #[default]
     NoDraw,
 }
 
@@ -261,7 +260,7 @@ fn get_edge_pos(edge:HalfEdgeId, mesh:&HalfEdgeMesh) -> (Vec3, Vec3) {
     let direction = distance_to_end.normalize();
     let distance_to_end = distance_to_end.length();
     let shift = OFFSET*if edge.face().is_some() {
-        get_face_center_pos(*edge, mesh) - start + OFFSET*edge.calculate_least_squares_normal().unwrap()
+        get_face_center_pos(*edge, mesh) - start + OFFSET*edge.calculate_normal().unwrap()
     } else {
         -(get_face_center_pos(*edge.twin(), mesh) - start)
     };
@@ -280,7 +279,8 @@ fn draw_edge_gizmos(mesh:Res<DebugMesh>, mut gizmos:Gizmos) {
         }
         let start = mesh.goto(edge).position();
         let end = mesh.goto(edge).twin().position();
-        gizmos.line(start, end, RIB_COLOR);
+        let is_seam = mesh.goto(edge).is_uv_seam();
+        gizmos.line(start, end, if is_seam { UV_SEAM_EDGE_COLOR } else { RIB_COLOR });
     }
 }
 

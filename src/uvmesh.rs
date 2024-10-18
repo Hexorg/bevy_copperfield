@@ -1,7 +1,8 @@
 use bevy::{prelude::{Vec2, Vec3}, utils::HashSet};
+use itertools::Itertools;
 use slotmap::SecondaryMap;
 
-use crate::mesh::{attributes::TraversalQueries, traversal::Traversal, FaceId, HalfEdgeMesh};
+use crate::mesh::{attributes::{AttributeKind, AttributeValues, TraversalQueries}, traversal::Traversal, FaceId, HalfEdgeId, HalfEdgeMesh};
 
 mod fit;
 
@@ -73,25 +74,6 @@ pub struct Charts{
 }
 
 impl Charts {
-    /// Original Chart flood fill implemented by [Xatlas](https://github.com/jpcy/xatlas/tree/master)
-    pub fn flood_fill(mesh:&HalfEdgeMesh) -> Self {
-        let mut charts = Vec::new();
-        let mut basis: SecondaryMap<FaceId, Basis> = SecondaryMap::new();
-        for face_id in mesh.face_keys() {
-            basis.insert(face_id, mesh.goto(face_id).compute_basis().unwrap());
-            if charts.iter().any(|c:&Chart| c.faces.contains(&face_id)) {
-                continue;
-            }
-            // TODO: XAtlas checks if face UV area is zero... Why? We are computing UVs here from scratch
-            let mut chart = Chart::new();
-            chart.faces.insert(face_id);
-            let mut current_face = face_id;
-            // mesh.goto(current_face).adjacent_faces()
-            // TODO Flood fill faces.
-            charts.push(chart);
-        }
-        Self { charts, basis }
-    }
 
     pub fn is_face_in_chart(&self, face_id:FaceId) -> bool {
         for chart in &self.charts {
@@ -101,6 +83,21 @@ impl Charts {
         }
         false
     }
+}
+
+/// Based on [Xatlas](https://github.com/jpcy/xatlas/tree/master)'s implementation and
+/// https://dl.acm.org/doi/10.1145/566654.566590 paper
+pub fn create_charts(mesh:&mut HalfEdgeMesh) {
+    let count = mesh.face_keys().len();
+    let edges = mesh.face_keys().map(|f| mesh[f].halfedge).sorted_by(|&l, &r| {
+        mesh.goto(r).sharpness().partial_cmp(&mesh.goto(l).sharpness()).unwrap_or(std::cmp::Ordering::Less)
+    }).take(5 * count / 100).collect::<Vec<_>>(); // take 5% of the sharpest faces
+
+    let mut uv_seams:SecondaryMap<HalfEdgeId, bool> = SecondaryMap::new();
+    for edge in edges {
+        uv_seams.insert(edge, true);
+    }
+    mesh.add_attribute(AttributeKind::UVSeams, AttributeValues::EdgeBool(uv_seams));
 }
 
 

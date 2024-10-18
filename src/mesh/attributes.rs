@@ -12,7 +12,8 @@ pub enum AttributeKind {
     Normals,
     UVs,
     Indices,
-    Creases
+    Creases,
+    UVSeams,
 }
 
 
@@ -22,7 +23,8 @@ pub enum AttributeValues {
     VertexVec3(AttributeStore<VertexId, Vec3>),
     VertexBool(AttributeStore<VertexId, bool>),
     EdgeVec2(AttributeStore<HalfEdgeId, Vec2>),
-    EdgeVec3(AttributeStore<HalfEdgeId, Vec3>)
+    EdgeVec3(AttributeStore<HalfEdgeId, Vec3>),
+    EdgeBool(AttributeStore<HalfEdgeId, bool>),
 }
 
 impl AttributeValues {
@@ -92,6 +94,18 @@ impl AttributeValues {
             _ => panic!("Unexpected attribute kind")
         }
     }
+    pub fn as_edge_bool(&self) -> &AttributeStore<HalfEdgeId, bool> {
+        match self {
+            Self::EdgeBool(v) => v,
+            _ => panic!("Unexpected attribute kind")
+        }
+    }
+    pub fn as_edge_bool_mut(&mut self) -> &mut AttributeStore<HalfEdgeId, bool> {
+        match self {
+            Self::EdgeBool(v) => v,
+            _ => panic!("Unexpected attribute kind")
+        }
+    }
 }
 
 pub type Attributes = BTreeMap<AttributeKind, AttributeValues>;
@@ -126,21 +140,22 @@ pub trait TraversalQueries{
     fn position(&self) -> Vec3;
     /// Uses AttributeKind::Creases to tell if the vertex is supposed to use smooth normals or sharp
     fn is_smooth_normals(&self) -> bool;
-
+    /// Uses AttributeKind::UVSeams to tell if the vertex is supposed to use smooth normals or sharp
+    fn is_uv_seam(&self) -> bool;
+    /// Returns how sharp this edge is by taking a dot product of adjacent face normals.
+    fn sharpness(&self) -> f32;
 }
 
 pub trait SelectionQueries {
     /// Get the average of all vertices of this face
     fn calculate_centroid(&self) -> Vec3;
-    /// Fit a plane to a collection of points.
+    /// Fit a plane to a collection of points using least squares method.
 	/// Fast, and accurate to within a few degrees.
 	/// Returns None if the points do not span a plane.
 	/// https://www.ilikebigbits.com/2015_03_04_plane_from_points.html
-    fn calculate_least_squares_normal(&self) -> Option<Vec3>;
+    fn calculate_normal(&self) -> Option<Vec3>;
     /// Calculate full 3x3 covariance matrix, excluding symmetries
     fn calculate_covariance(&self) -> Mat3;
-    /// Get average of adjacent face's normals
-    fn calculate_smooth_normal(&self) -> Vec3;
 }
 
 impl<'m> TraversalQueries for Traversal<'m> {
@@ -157,14 +172,70 @@ impl<'m> TraversalQueries for Traversal<'m> {
             self.mesh.is_smooth
         }
     }
+
+    fn is_uv_seam(&self) -> bool {
+        if let Some(store) = self.mesh.attribute(&super::attributes::AttributeKind::UVSeams) {
+            store.as_edge_bool().get(**self).copied().unwrap_or(false)
+        } else {
+            false
+        }
+    }
+    
+    fn sharpness(&self) -> f32 {
+        let n = self.calculate_normal();
+        let n_other = self.twin().calculate_normal();
+        1.0 - match (n, n_other) {
+            (Some(n), Some(n_other)) => {
+                n.dot(n_other)
+            },
+            _ => 0.0
+        }
+    }
 }
 
-impl<'m> SelectionQueries for Selection<'m> {
+impl<'m> SelectionQueries for Traversal<'m> {
     fn calculate_centroid(&self) -> Vec3 {
-        // We keep count since we don't know ahead of time the amount of face edges
         let (sum, count) = self.iter_loop().fold((Vec3::ZERO, 0.0), |acc, i| (acc.0 + i.position(), acc.1 + 1.0));
         sum / count
     }
+
+    fn calculate_normal(&self) -> Option<Vec3> {
+        let points = self
+        .iter_loop()
+        .map(|f| f.position()).collect::<StackVec<_>>();
+    if points.len() == 3 {
+        Some((points[2]-points[0]).cross(points[1] - points[0]).normalize())
+    } else {
+        let covariance = self.calculate_covariance();
+        let dir_x = covariance.y_axis.cross(covariance.z_axis);
+        let dir_y = covariance.z_axis.cross(covariance.x_axis);
+        let dir_z = covariance.x_axis.cross(covariance.y_axis);
+        let dir_max = dir_x.x.max(dir_y.y.max(dir_z.z));
+        // If you get None coming from this function for planes that should be OK to exist, the following if statement
+        // likely uses wrong comparisons
+        // println!("face:{:?} covariance: {covariance:?}\ndir_x: {dir_x:?}\ndir_y: {dir_y:?}\ndir_z: {dir_z:?}\ndir_max: {dir_max:?}", self.face());
+        if dir_max <= 0.0 {
+            // The points don't span a plane
+            None
+        } else {
+            // Pick path with best conditioning:
+            let mut dir = if dir_max == dir_x.x {
+                dir_x
+            } else if dir_max == dir_y.y {
+                dir_y
+            } else { // det_max == det_z
+                dir_z
+            };
+            // println!("Normal: {dir:?}");
+            if dir.length() <= f32::EPSILON {
+                None
+            } else {
+                Some(dir.normalize())
+            }
+        }
+    }
+    }
+
     fn calculate_covariance(&self) -> Mat3 {
         let centroid = self.calculate_centroid();
         self.iter_loop().fold(Mat3::ZERO, |acc, i| {
@@ -172,46 +243,25 @@ impl<'m> SelectionQueries for Selection<'m> {
             acc + r * r.transpose()
         })
     }
-    fn calculate_least_squares_normal(&self) -> Option<Vec3> {
-        let points = self
-            .iter_loop()
-            .map(|f| f.position()).collect::<StackVec<_>>();
-        if points.len() == 3 {
-            Some((points[2]-points[0]).cross(points[1] - points[0]).normalize())
-        } else {
-            let covariance = self.calculate_covariance();
-            let dir_x = covariance.y_axis.cross(covariance.z_axis);
-            let dir_y = covariance.z_axis.cross(covariance.x_axis);
-            let dir_z = covariance.y_axis.cross(covariance.y_axis);
-            let dir_max = dir_x.x.max(dir_y.y.max(dir_z.x));
-            // If you get None coming from this function for planes that should be OK to exist, the following if statement
-            // likely uses wrong comparisons
-            // println!("dir_x: {dir_x:?}\ndir_y: {dir_y:?}\ndir_z: {dir_z:?}\ndir_max: {dir_max:?}");
-            if dir_max <= 0.0 {
-                // The points don't span a plane
-                None
-            } else {
-                // Pick path with best conditioning:
-                let dir = if dir_max == dir_x.x {
-                    dir_x
-                } else if dir_max == dir_y.y {
-                    dir_y
-                } else { // det_max == det_z
-                    dir_z
-                };
-                if dir.length() <= f32::EPSILON {
-                    None
-                } else {
-                    Some(dir.normalize())
-                }
-            }
-        }
-    }
 
+}
 
-    fn calculate_smooth_normal(&self) -> Vec3 {
-        let (sum, count) = self.adjacent_faces().map(|t| t.calculate_least_squares_normal().unwrap()).fold((Vec3::ZERO, 0.0), |acc, i| (acc.0 + i, acc.1 + 1.0));
+impl<'m> SelectionQueries for Selection<'m> {
+    fn calculate_centroid(&self) -> Vec3 {
+        // We keep count since we don't know ahead of time the amount of face edges
+        let (sum, count) = self.iter().map(|t| t.calculate_centroid()).fold((Vec3::ZERO, 0.0), |acc, i| (acc.0 + i, acc.1 + 1.0));
         sum / count
+    }
+    fn calculate_covariance(&self) -> Mat3 {
+        self.iter().map(|t| t.calculate_covariance()).sum()
+    }
+    fn calculate_normal(&self) -> Option<Vec3> {
+        let (sum, count) = self.iter().filter_map(|t| t.calculate_normal()).fold((Vec3::ZERO, 0.0), |acc, i| (acc.0 + i, acc.1 + 1.0));
+        if count == 0.0 {
+            None
+        } else {
+            Some(sum / count)
+        }
     }
 }
 

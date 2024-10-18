@@ -17,7 +17,7 @@ pub mod face_ops;
 pub mod mesh_ops;
 
 
-use crate::{uvmesh::UVMeshQueries, OPTIMIZE_FOR_NGONS_UNDER_SIZE};
+use crate::OPTIMIZE_FOR_NGONS_UNDER_SIZE;
 
 pub type StackVec<T> = SmallVec<[T;OPTIMIZE_FOR_NGONS_UNDER_SIZE]>;
 
@@ -226,14 +226,14 @@ impl std::fmt::Debug for HalfEdge {
 /// At any given vertex there will be more than one half-edge we could choose for this, 
 /// but we only need one and it doesn't matter which one it is.
 pub struct Vertex {
-    halfedge: HalfEdgeId,
+    pub halfedge: HalfEdgeId,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 /// The half-edge pointer in the face is similar to the pointer in the vertex structure in that although 
 /// there are multiple half-edges bordering each face, we only need to store one of them, and it doesn't matter which one.
 pub struct Face {
-    halfedge: HalfEdgeId,
+    pub halfedge: HalfEdgeId,
 }
 
 /// Editable Mesh based on Half-Edge data structure. The half-edge data structure is called that because instead of 
@@ -304,7 +304,7 @@ impl HalfEdgeMesh {
     /// Go to a position and select it, allowing you to select more items to later act on as a group
     pub fn select(&self, pos: impl Targettable + Copy) -> Selection<'_> {
         let position = pos.get_mesh_position(self);
-        Selection::new(self.goto(pos), position)
+        Selection::new(self, position)
     }
 
     #[inline]
@@ -505,6 +505,11 @@ impl HalfEdgeMesh {
         self.attributes.get(kind)
     }
 
+    /// Get an attribute
+    pub fn attribute_mut(&mut self, kind:&AttributeKind) -> Option<&mut AttributeValues> {
+        self.attributes.get_mut(kind)
+    }
+
     /// Get a sum of all face-edges (usefull for checks)
     pub fn count_face_edges(&self) -> usize {
         let mut count:usize = 0;
@@ -582,11 +587,12 @@ impl HalfEdgeMesh {
         }
         for (kind, values) in &other.attributes {
             let store = self.attributes.entry(*kind).or_insert_with(|| match values {
-                AttributeValues::VertexU32(_) => AttributeValues::VertexU32(SecondaryMap::<VertexId, u32>::new()),
-                AttributeValues::VertexVec3(_) => AttributeValues::VertexVec3(SecondaryMap::<VertexId, Vec3>::new()),
-                AttributeValues::VertexBool(_) => AttributeValues::VertexBool(SecondaryMap::<VertexId, bool>::new()),
-                AttributeValues::EdgeVec2(_) => AttributeValues::EdgeVec2(SecondaryMap::<HalfEdgeId, Vec2>::new()),
-                AttributeValues::EdgeVec3(_) => AttributeValues::EdgeVec3(SecondaryMap::<HalfEdgeId, Vec3>::new())
+                AttributeValues::VertexU32(_) => AttributeValues::VertexU32(SecondaryMap::new()),
+                AttributeValues::VertexVec3(_) => AttributeValues::VertexVec3(SecondaryMap::new()),
+                AttributeValues::VertexBool(_) => AttributeValues::VertexBool(SecondaryMap::new()),
+                AttributeValues::EdgeVec2(_) => AttributeValues::EdgeVec2(SecondaryMap::new()),
+                AttributeValues::EdgeVec3(_) => AttributeValues::EdgeVec3(SecondaryMap::new()),
+                AttributeValues::EdgeBool(_) => AttributeValues::EdgeBool(SecondaryMap::new())
             });
             match values {
                 AttributeValues::VertexU32(secondary_map) => for (old_key, &value) in secondary_map {
@@ -604,6 +610,9 @@ impl HalfEdgeMesh {
                 AttributeValues::EdgeVec3(secondary_map) => for (old_key, &value) in secondary_map {
                     store.as_edge_vec3_mut().insert(edge_map[old_key], value);
                 },
+                AttributeValues::EdgeBool(secondary_map) => for (old_key, &value) in secondary_map {
+                    store.as_edge_bool_mut().insert(edge_map[old_key], value);
+                }
             }
         }
         if self.is_smooth != other.is_smooth {
@@ -671,7 +680,8 @@ impl From<&HalfEdgeMesh> for BevyMesh {
                             let index = positions.len() as u32;
                             indices.push(index);
                             positions.push(mesh.goto(vertex).position().to_array());
-                            normals.push(mesh.select(face).calculate_least_squares_normal().unwrap().to_array());
+                            let n = mesh.goto(face).calculate_normal().unwrap();
+                            normals.push(n.to_array());
                             uvs.push(Vec2::ZERO);
                         }
                     } else {
@@ -682,9 +692,11 @@ impl From<&HalfEdgeMesh> for BevyMesh {
                         let pos = v.position();
                         positions.push(pos.to_array());
                         if mesh.goto(vertex).is_smooth_normals() {
-                            normals.push(v.select_vertex().calculate_smooth_normal().to_array());
+                            normals.push(v.select_vertex().to_face_selection().calculate_normal().unwrap().to_array());
                         } else {
-                            normals.push(mesh.select(face).calculate_least_squares_normal().unwrap().to_array());
+                            let n = mesh.goto(face).calculate_normal().unwrap();
+
+                            normals.push(n.to_array());
                         }
                         uvs.push(Vec2::ZERO);
                     }

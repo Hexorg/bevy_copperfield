@@ -1,5 +1,5 @@
 
-use bevy::prelude::{default, Deref, DerefMut};
+use bevy::{prelude::{default, Deref, DerefMut}, render::render_graph::Edge};
 
 
 use super::{selection::Selection, FaceId, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId};
@@ -50,6 +50,7 @@ impl std::fmt::Debug for VertexFlow {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct EdgeIterator<'m> {
     // We want iterator to stop doing anything if one of the pointers is broken
     // However that means we need to be able to check if we are in a broken state and 
@@ -120,19 +121,19 @@ impl<'m> Traversal<'m> {
     /// Convert current position into vertex selection
     pub fn select_vertex(self) -> Selection<'m> {
         let selection = MeshPosition::Vertex(self.vertex());
-        Selection::new(self, selection.into())
+        Selection::new(self.mesh, selection.into())
     }
 
     /// Convert current position into halfedge selection
     pub fn select_edge(self) -> Selection<'m> {
         let selection = MeshPosition::HalfEdge(self.position);
-        Selection::new(self, selection.into())
+        Selection::new(self.mesh, selection.into())
     }
 
     /// Convert current position into face selection. Panics if current position is boundary
     pub fn select_face(self) -> Selection<'m> {
         let selection = MeshPosition::Face(self.face().unwrap());
-        Selection::new(self, selection.into())
+        Selection::new(self.mesh, selection.into())
     }
 
     /// Get current vertex and scan over outgoing edges. If any of the edges land on `vertex` - return that edge.
