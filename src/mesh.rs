@@ -69,7 +69,7 @@ impl VertexId {
 
 impl FaceId {
     /// Lets the crate create custom Id. Only used for unit-tests
-    pub(crate) fn from_ffi(ffi:u64) -> Self {
+    pub fn from_ffi(ffi:u64) -> Self {
         Self(KeyData::from_ffi(ffi))
     }
 }

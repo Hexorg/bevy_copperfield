@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use bevy::{math::{Mat3A, VectorSpace}, prelude::{Mat3, Vec2, Vec3}};
-use itertools::Itertools;
+use itertools::{concat, Itertools};
 use slotmap::SecondaryMap;
 
 use super::{selection::Selection, traversal::Traversal, HalfEdgeId, StackVec, VertexId};
@@ -184,11 +184,11 @@ impl<'m> TraversalQueries for Traversal<'m> {
     fn sharpness(&self) -> f32 {
         let n = self.calculate_normal();
         let n_other = self.twin().calculate_normal();
-        1.0 - match (n, n_other) {
+        1.0 - match (n, n_other) { // invert cosine so 1.0 is "sharp" and 0 is "flat"
             (Some(n), Some(n_other)) => {
-                n.dot(n_other)
+                n.dot(n_other).abs() / n.length() / n_other.length() // return cos() of angle between normals
             },
-            _ => 0.0
+            _ => 1.0 // cos(0) = 1.0
         }
     }
 }
@@ -199,41 +199,91 @@ impl<'m> SelectionQueries for Traversal<'m> {
         sum / count
     }
 
+    /// Fit a plane to a collection of points.
+	/// Fast, and accurate to within a few degrees.
+	/// Returns None if the points do not span a plane.
+	/// https://www.ilikebigbits.com/2017_09_25_plane_from_points_2.html
     fn calculate_normal(&self) -> Option<Vec3> {
         let points = self
         .iter_loop()
         .map(|f| f.position()).collect::<StackVec<_>>();
-    if points.len() == 3 {
-        Some((points[2]-points[0]).cross(points[1] - points[0]).normalize())
-    } else {
-        let covariance = self.calculate_covariance();
-        let dir_x = covariance.y_axis.cross(covariance.z_axis);
-        let dir_y = covariance.z_axis.cross(covariance.x_axis);
-        let dir_z = covariance.x_axis.cross(covariance.y_axis);
-        let dir_max = dir_x.x.max(dir_y.y.max(dir_z.z));
-        // If you get None coming from this function for planes that should be OK to exist, the following if statement
-        // likely uses wrong comparisons
-        // println!("face:{:?} covariance: {covariance:?}\ndir_x: {dir_x:?}\ndir_y: {dir_y:?}\ndir_z: {dir_z:?}\ndir_max: {dir_max:?}", self.face());
-        if dir_max <= 0.0 {
-            // The points don't span a plane
-            None
-        } else {
-            // Pick path with best conditioning:
-            let mut dir = if dir_max == dir_x.x {
-                dir_x
-            } else if dir_max == dir_y.y {
-                dir_y
-            } else { // det_max == det_z
-                dir_z
-            };
-            // println!("Normal: {dir:?}");
-            if dir.length() <= f32::EPSILON {
-                None
-            } else {
-                Some(dir.normalize())
-            }
+        let n = points.len() as f32;
+        let mut sum = Vec3{x:0.0, y:0.0, z:0.0};
+        for &p in &points {
+            sum += p;
         }
-    }
+        let centroid = sum * (1.0 / n);
+    
+        // Calculate full 3x3 covariance matrix, excluding symmetries:
+        let mut xx = 0.0; let mut xy = 0.0; let mut xz = 0.0;
+        let mut yy = 0.0; let mut yz = 0.0; let mut zz = 0.0;
+
+        let a = centroid - points[0];
+        let b = centroid - points[1];
+        let simple_normal = a.cross(b);
+    
+        for p in points {
+            let r = p - centroid;
+            xx += r.x * r.x;
+            xy += r.x * r.y;
+            xz += r.x * r.z;
+            yy += r.y * r.y;
+            yz += r.y * r.z;
+            zz += r.z * r.z;
+        }
+    
+        xx /= n;
+        xy /= n;
+        xz /= n;
+        yy /= n;
+        yz /= n;
+        zz /= n;
+    
+        let mut weighted_dir = Vec3{x: 0.0, y: 0.0, z: 0.0};
+    
+        {
+            let det_x = yy*zz - yz*yz;
+            let axis_dir = Vec3{
+                x: det_x,
+                y: xz*yz - xy*zz,
+                z: xy*yz - xz*yy,
+            };
+            let mut weight = det_x * det_x;
+            if weighted_dir.dot(axis_dir) < 0.0 { weight = -weight; }
+            weighted_dir += axis_dir * weight;
+        }
+    
+        {
+            let det_y = xx*zz - xz*xz;
+            let axis_dir = Vec3{
+                x: xz*yz - xy*zz,
+                y: det_y,
+                z: xy*xz - yz*xx,
+            };
+            let mut weight = det_y * det_y;
+            if weighted_dir.dot(axis_dir) < 0.0 { weight = -weight; }
+            weighted_dir += axis_dir * weight;
+        }
+    
+        {
+            let det_z = xx*yy - xy*xy;
+            let axis_dir = Vec3{
+                x: xy*yz - xz*yy,
+                y: xy*xz - yz*xx,
+                z: det_z,
+            };
+            let mut weight = det_z * det_z;
+            if weighted_dir.dot(axis_dir) < 0.0 { weight = -weight; }
+            weighted_dir += axis_dir * weight;
+        }
+    
+        let normal = weighted_dir.normalize();
+        if normal.is_finite() {
+            let sign = simple_normal.dot(normal).signum();
+            Some(sign*normal)
+        } else {
+            None
+        }
     }
 
     fn calculate_covariance(&self) -> Mat3 {

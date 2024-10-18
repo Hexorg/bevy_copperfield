@@ -61,7 +61,7 @@ impl<'m> Selection<'m> {
         self.selection
     }
 
-    fn insert(&mut self, halfedge:HalfEdgeId) -> bool {
+    pub fn append(&mut self, halfedge:HalfEdgeId) -> bool {
         match &mut self.selection {
             MeshSelection::Vertices(vec) => vec.insert(self.mesh[halfedge].vertex),
             MeshSelection::HalfEdges(vec) => vec.insert(halfedge),

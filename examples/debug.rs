@@ -1,15 +1,20 @@
 use core::f32;
 
-use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeValues, SelectionQueries, TraversalQueries}, edge_ops, face_ops, mesh_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId}, mesh_builders::HalfEdgeMeshBuilder, uvmesh::create_charts};
+use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeValues, SelectionQueries, TraversalQueries}, edge_ops, face_ops, mesh_ops, vertex_ops, FaceId, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId}, mesh_builders::HalfEdgeMeshBuilder, uvmesh::{create_charts, Chart}};
 use camera_controls::{capture_mouse, FlyingCamera};
 use slotmap::{SecondaryMap};
 use smallvec::SmallVec;
 use bevy::{color, math::VectorSpace, prelude::*, render::{camera::ScalingMode, view::screenshot::ScreenshotManager}, window::PrimaryWindow};
 
-pub fn cuboid_tests() -> HalfEdgeMesh {
+#[derive(Resource)]
+pub struct Charts{
+    charts:Vec<Chart>
+}
+
+pub fn cuboid_tests() -> (Vec<Chart>, HalfEdgeMesh) {
 
     let mut mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
-    mesh.set_smooth(false);
+    mesh.set_smooth(true);
     let faces = mesh.face_keys().collect::<StackVec<_>>();
     let face = faces[1];
     face_ops::extrude(&mut mesh, face, 1.0);
@@ -18,8 +23,8 @@ pub fn cuboid_tests() -> HalfEdgeMesh {
     face_ops::extrude(&mut mesh, middle_face, 1.0);
     mesh_ops::subdivide(&mut mesh);
     mesh_ops::subdivide(&mut mesh);
-    create_charts(&mut mesh);
-    mesh
+    let charts = create_charts(&mut mesh);
+    (charts, mesh)
 }
 
 pub fn sample_mesh_tests() -> HalfEdgeMesh {
@@ -43,7 +48,7 @@ pub fn builder_tests() -> HalfEdgeMesh {
     mesh
 }
 
-pub fn build_mesh() -> HalfEdgeMesh {   
+pub fn build_mesh() -> (Vec<Chart>, HalfEdgeMesh) {   
     cuboid_tests()
     // sample_mesh_tests()
     // builder_tests()
@@ -165,9 +170,10 @@ const FACE_COLOR:Srgba = color::palettes::basic::BLUE;
 
 #[derive(States, Debug, Hash, Default, PartialEq, Eq, Clone, Copy)]
 pub enum GizmoState{
-    Draw,
+    NoGizmos,
     #[default]
-    NoDraw,
+    LinesOnly,
+    LinesAndLabels
 }
 
 #[derive(States, Debug, Hash, Default, PartialEq, Eq, Clone, Copy)]
@@ -179,6 +185,7 @@ pub enum ScreenshotState{
 /// set up a simple 3D scene
 fn setup(
     debug_mesh:Res<DebugMesh>,
+    charts:Res<Charts>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -211,12 +218,22 @@ fn setup(
         TextSection{value:"Mouse wheel: Zoom\n".into(),..default()},
         TextSection{value:"Escape: Exit\n".into(),..default()},
         TextSection{value:"Digit 0: Reset view\n".into(),..default()},
-        TextSection{value:"Backslash: Toggle gizmos on/off\n".into(),..default()},
+        TextSection{value:"Backslash: Toggle gizmo state\n".into(),..default()},
         TextSection{value:"Tab: Toggle projection\n".into(),..default()},
         TextSection{value:"Enter: Take Screenshot\n".into(),..default()},
         TextSection{value:"Space: Apply Mesh mod function\n".into(),..default()},
     ]),..default()}));
 
+    for chart in &charts.charts {
+        if chart.faces.len() < 5 {
+            for &face in &chart.faces {
+                commands.spawn((HalfMeshLabelKey(face.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", face)[6..]), TextStyle {color: FACE_COLOR.into(), ..default() }), style:Style{position_type:PositionType::Absolute,..default()}, ..default()}));
+            }
+        }
+    }
+}
+
+fn spawn_labels(debug_mesh:Res<DebugMesh>,mut commands: Commands) {
     for vertex in debug_mesh.vertex_keys() {
         commands.spawn((HalfMeshLabelKey(vertex.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", vertex)[8..]), TextStyle {color: VERTEX_COLOR.into(), ..default() }), style:Style{position_type:PositionType::Absolute,..default()}, ..default()}));
     }
@@ -225,6 +242,12 @@ fn setup(
     }
     for face in debug_mesh.face_keys() {
         commands.spawn((HalfMeshLabelKey(face.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", face)[6..]), TextStyle {color: FACE_COLOR.into(), ..default() }), style:Style{position_type:PositionType::Absolute,..default()}, ..default()}));
+    }
+}
+
+fn despawn_labels(labels:Query<Entity, With<HalfMeshLabelKey>>, mut commands: Commands) {
+    for label in &labels {
+        commands.entity(label).despawn();
     }
 }
 
@@ -273,10 +296,10 @@ fn draw_edge_gizmos(mesh:Res<DebugMesh>, mut gizmos:Gizmos) {
         let (start, end) = get_edge_pos(edge, &mesh.0);
         gizmos.arrow(start, end, EDGE_COLOR);
         // Draw lines towards face center
-        if mesh[edge].face.is_some() {
-            let face_center = get_face_center_pos(edge, &mesh.0);
-            gizmos.line(start, face_center, FACE_COLOR);
-        }
+        // if mesh[edge].face.is_some() {
+        //     let face_center = get_face_center_pos(edge, &mesh.0);
+        //     gizmos.line(start, face_center, FACE_COLOR);
+        // }
         let start = mesh.goto(edge).position();
         let end = mesh.goto(edge).twin().position();
         let is_seam = mesh.goto(edge).is_uv_seam();
@@ -285,24 +308,18 @@ fn draw_edge_gizmos(mesh:Res<DebugMesh>, mut gizmos:Gizmos) {
 }
 
 fn move_labels_to_with_camera(mut transform:Query<(&mut Style, &HalfMeshLabelKey)>, 
-    state:Res<State<GizmoState>>,
     camera:Query<(&GlobalTransform, &Camera)>, 
     mesh:Res<DebugMesh>) {
     let (camera_transform, camera) = camera.single();
     for (mut t, &key) in &mut transform {
-        if state.get() == &GizmoState::Draw {
-            let pos = match key.0 {
-                MeshPosition::Vertex(vertex_id) => mesh.attribute(&AttributeKind::Positions).unwrap().as_vertices_vec3().get(vertex_id).copied().unwrap_or_default(),
-                MeshPosition::HalfEdge(half_edge_id) => get_edge_pos(half_edge_id, &mesh.0).1,
-                MeshPosition::Face(face_id) => get_face_center_pos(*mesh.goto(face_id), &mesh.0),
-            };
-            if let Some(viewport_pos) = camera.world_to_viewport(camera_transform, pos) {
-                t.top = Val::Px(viewport_pos.y);
-                t.left = Val::Px(viewport_pos.x);
-            }
-        } else {
-            t.top = Val::Px(-10.0);
-            t.left = Val::Px(-10.0);
+        let pos = match key.0 {
+            MeshPosition::Vertex(vertex_id) => mesh.attribute(&AttributeKind::Positions).unwrap().as_vertices_vec3().get(vertex_id).copied().unwrap_or_default(),
+            MeshPosition::HalfEdge(half_edge_id) => get_edge_pos(half_edge_id, &mesh.0).1,
+            MeshPosition::Face(face_id) => get_face_center_pos(*mesh.goto(face_id), &mesh.0),
+        };
+        if let Some(viewport_pos) = camera.world_to_viewport(camera_transform, pos) {
+            t.top = Val::Px(viewport_pos.y);
+            t.left = Val::Px(viewport_pos.x);
         }
     }
 }
@@ -338,8 +355,9 @@ fn screenshot_on_enter(
 fn gizmo_state_changes(state:Res<State<GizmoState>>, input: Res<ButtonInput<KeyCode>>, mut next:ResMut<NextState<GizmoState>>) {
     if input.just_pressed(KeyCode::Backslash) {
         next.set(match state.get() {
-            GizmoState::Draw => GizmoState::NoDraw,
-            GizmoState::NoDraw => GizmoState::Draw,
+            GizmoState::NoGizmos => if input.pressed(KeyCode::ShiftRight) { GizmoState::LinesAndLabels } else { GizmoState::LinesOnly },
+            GizmoState::LinesOnly => if input.pressed(KeyCode::ShiftRight) { GizmoState::NoGizmos } else { GizmoState::LinesAndLabels},
+            GizmoState::LinesAndLabels => if input.pressed(KeyCode::ShiftRight) { GizmoState::LinesOnly } else { GizmoState::NoGizmos}
         });
     }
 }
@@ -388,15 +406,19 @@ fn main() {
     let (config, _) = r.config_mut::<DefaultGizmoConfigGroup>();
         config.line_perspective = false;
         config.line_width = 5.0;
+    let (charts, mesh) = build_mesh();
     app
-        .insert_resource(DebugMesh(build_mesh()))
+        .insert_resource(DebugMesh(mesh))
+        .insert_resource(Charts{charts})
         .init_state::<GizmoState>()
         .init_state::<ScreenshotState>()
         .add_systems(Startup, (setup, capture_mouse))
         .add_systems(Update, (screenshot_on_enter, camera_controls::player_controller, gizmo_state_changes, move_labels_to_with_camera))
-        .add_systems(Update, (draw_origin_gizmos, draw_vertex_gizmos, draw_edge_gizmos,).run_if(in_state(GizmoState::Draw)))
+        .add_systems(Update, (draw_origin_gizmos, draw_vertex_gizmos, draw_edge_gizmos,).run_if(not(in_state(GizmoState::NoGizmos))))
         .add_systems(OnEnter(ScreenshotState::ReadyForScreenshot), take_screenshot)
         .add_systems(OnEnter(ScreenshotState::NotTakingScreenshot), |mut v:Query<&mut Visibility, With<HelpText>>| for mut v in &mut v { *v = Visibility::Inherited})
+        .add_systems(OnEnter(GizmoState::LinesAndLabels), spawn_labels)
+        .add_systems(OnExit(GizmoState::LinesAndLabels), despawn_labels)
         .run()
         ;
     
