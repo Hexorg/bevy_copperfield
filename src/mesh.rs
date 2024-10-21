@@ -7,6 +7,7 @@ use selection::Selection;
 use slotmap::{KeyData, SecondaryMap, SlotMap};
 use smallvec::SmallVec;
 use traversal::{Traversal, VertexFlow};
+use crate::uvmesh::least_squares_conformal_maps;
 
 pub mod attributes;
 pub(crate) mod traversal;
@@ -17,7 +18,7 @@ pub mod face_ops;
 pub mod mesh_ops;
 
 
-use crate::OPTIMIZE_FOR_NGONS_UNDER_SIZE;
+use crate::{uvmesh::create_charts, OPTIMIZE_FOR_NGONS_UNDER_SIZE};
 
 pub type StackVec<T> = SmallVec<[T;OPTIMIZE_FOR_NGONS_UNDER_SIZE]>;
 
@@ -464,6 +465,18 @@ impl HalfEdgeMesh {
         face_id
     }
 
+    pub fn calculate_uvs(&mut self) {
+        let charts = create_charts(self);
+        least_squares_conformal_maps::project(self, charts);
+        let values = self.attribute(&AttributeKind::UVs).expect("Vertices don't have UV attribute.").as_edge_vec2();
+        let empty_edges = self.edge_keys().filter(|&e| !values.contains_key(e)).collect::<StackVec<_>>();
+        println!("There are {} UV-unassigned edges", empty_edges.len());
+        let values = self.attribute_mut(&AttributeKind::UVs).expect("Vertices don't have UV attribute.").as_edge_vec2_mut();
+        for v in empty_edges {
+            values.insert(v, Vec2::ZERO);
+        }
+    }
+
     /// How many faces are currently allocated
     pub fn face_count(&self) -> usize {
         self.faces.len()
@@ -588,15 +601,19 @@ impl HalfEdgeMesh {
         for (kind, values) in &other.attributes {
             let store = self.attributes.entry(*kind).or_insert_with(|| match values {
                 AttributeValues::VertexU32(_) => AttributeValues::VertexU32(SecondaryMap::new()),
+                AttributeValues::VertexVec2(_) => AttributeValues::VertexVec2(SecondaryMap::new()),
                 AttributeValues::VertexVec3(_) => AttributeValues::VertexVec3(SecondaryMap::new()),
                 AttributeValues::VertexBool(_) => AttributeValues::VertexBool(SecondaryMap::new()),
                 AttributeValues::EdgeVec2(_) => AttributeValues::EdgeVec2(SecondaryMap::new()),
                 AttributeValues::EdgeVec3(_) => AttributeValues::EdgeVec3(SecondaryMap::new()),
-                AttributeValues::EdgeBool(_) => AttributeValues::EdgeBool(SecondaryMap::new())
+                AttributeValues::EdgeBool(_) => AttributeValues::EdgeBool(SecondaryMap::new()),
             });
             match values {
                 AttributeValues::VertexU32(secondary_map) => for (old_key, &value) in secondary_map {
                     store.as_vertices_u32_mut().insert(vertex_map[old_key], value);
+                },
+                AttributeValues::VertexVec2(secondary_map) => for (old_key, &value) in secondary_map {
+                    store.as_vertices_vec2_mut().insert(vertex_map[old_key], value);
                 },
                 AttributeValues::VertexVec3(secondary_map) => for (old_key, &value) in secondary_map {
                     store.as_vertices_vec3_mut().insert(vertex_map[old_key], value);
@@ -659,55 +676,41 @@ impl From<&HalfEdgeMesh> for BevyMesh {
         let mut normals = Vec::new();
         let mut uvs= Vec::new();
         let mut indices = Vec::new();
-        let mut vertex_index_map:SecondaryMap<VertexId, u32> = SecondaryMap::new();
+        // values in vertex_index map are vectors of (uv coordinates, index) to allow re-using vertices with 
+        // the same uv-coordinates
+        let mut vertex_index_map:SecondaryMap<VertexId, Vec<(Vec2, u32)>> = SecondaryMap::new();
         // TODO: Check if traversing adjacent faces first is better.
         // Down side - checking adjacency now is slower on CPU
         // But having indices with better locality might be better on GPU
         for face in mesh.faces.keys() { 
-            let face_vertices:SmallVec<[_;6]> = mesh.goto(face).iter_loop().map(|f| f.vertex()).collect();
-
-            let is_even = (face_vertices.len() as i32 % 2) == 0;
-            let mut start_index = 0;
-            let mut end_index = face_vertices.len() - 1;
-            // Triangulate theese polygons. TODO: Figure out better way. Most crates I found were for 2D
-            while end_index > 0  {
-                let triangle = [face_vertices[start_index], face_vertices[start_index+1], face_vertices[end_index]];
-                for vertex in triangle {
-                    if let Some(output_index) = vertex_index_map.get(vertex) {
-                        if mesh.goto(vertex).is_smooth_normals() {
-                            indices.push(*output_index);
-                        } else {
-                            let index = positions.len() as u32;
-                            indices.push(index);
-                            positions.push(mesh.goto(vertex).position().to_array());
-                            let n = mesh.goto(face).calculate_normal().unwrap();
-                            normals.push(n.to_array());
-                            uvs.push(Vec2::ZERO);
-                        }
-                    } else {
-                        let index = positions.len() as u32;
-                        indices.push(index);
-                        vertex_index_map.insert(vertex, index);
-                        let v = mesh.goto(vertex);
-                        let pos = v.position();
-                        positions.push(pos.to_array());
-                        if mesh.goto(vertex).is_smooth_normals() {
-                            normals.push(v.select_vertex().to_face_selection().calculate_normal().unwrap().to_array());
-                        } else {
-                            let n = mesh.goto(face).calculate_normal().unwrap();
-
-                            normals.push(n.to_array());
-                        }
-                        uvs.push(Vec2::ZERO);
+            let f = mesh.goto(face);
+            for (idx, (vertex, next)) in f.triangulate().into_iter().circular_tuple_windows().enumerate() {
+                let t = mesh.goto(vertex);
+                let edge_to = if idx % 3 == 2 { None } else { t.find_halfedge_to(next).filter(|t| t.face() == Some(face)) };
+                let uv = edge_to.unwrap_or_else(|| t.iter_outgoing().find(|e| e.face() == Some(face)).unwrap()).uv();
+                let mut is_new_output = true;
+                if let Some(known_indices) = vertex_index_map.get(vertex) {
+                    let index = known_indices.iter().find(|(e_uv, _)| *e_uv == uv).map(|(_, idx)| *idx);
+                    if t.is_smooth_normals() && index.is_some() {
+                        is_new_output = false;
+                        indices.push(index.unwrap());
                     }
                 }
-                end_index -= 1;
-                start_index += 1;
-                if start_index + if is_even { 1 } else { 0 } == end_index {
-                    start_index += 1;
-                    end_index -= 1;
+                if is_new_output {
+                    let index = positions.len() as u32;
+                    indices.push(index);
+                    positions.push(t.position().to_array());
+                    if t.is_smooth_normals() {
+                        normals.push(t.select_vertex().to_face_selection().calculate_normal().unwrap().to_array());
+                    } else {
+                        let n = f.calculate_normal().unwrap();
+                        normals.push(n.to_array());
+                    }
+                    uvs.push(uv);
+                    let known_indices = vertex_index_map.entry(vertex).unwrap().or_default();
+                    known_indices.push((uv, index));
                 }
-            } 
+            }
         }
 
         let indices = mesh::Indices::U32(indices);

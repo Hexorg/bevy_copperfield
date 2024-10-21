@@ -2,9 +2,11 @@ use core::f32;
 
 use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeValues, SelectionQueries, TraversalQueries}, edge_ops, face_ops, mesh_ops, vertex_ops, FaceId, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId}, mesh_builders::HalfEdgeMeshBuilder, uvmesh::{create_charts, Chart}};
 use camera_controls::{capture_mouse, FlyingCamera};
+use itertools::Itertools;
+use line_drawing::Bresenham;
 use slotmap::{SecondaryMap};
 use smallvec::SmallVec;
-use bevy::{color, math::VectorSpace, prelude::*, render::{camera::ScalingMode, view::screenshot::ScreenshotManager}, window::PrimaryWindow};
+use bevy::{asset::AssetLoader, color, math::VectorSpace, prelude::*, render::{camera::ScalingMode, texture::{ImageFormat, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}, view::screenshot::ScreenshotManager}, window::PrimaryWindow};
 
 #[derive(Resource)]
 pub struct Charts{
@@ -23,8 +25,9 @@ pub fn cuboid_tests() -> (Vec<Chart>, HalfEdgeMesh) {
     face_ops::extrude(&mut mesh, middle_face, 1.0);
     mesh_ops::subdivide(&mut mesh);
     mesh_ops::subdivide(&mut mesh);
-    let charts = create_charts(&mut mesh);
-    (charts, mesh)
+    // let charts = create_charts(&mut mesh);
+    mesh.calculate_uvs();
+    (Vec::new(), mesh)
 }
 
 pub fn sample_mesh_tests() -> HalfEdgeMesh {
@@ -189,10 +192,20 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    assets:Res<AssetServer>,
 ) {
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(&debug_mesh.0)),
-        material: materials.add(Color::srgb_u8(124, 144, 255)),
+        material: materials.add(StandardMaterial{
+            base_color_texture:Some(assets.load_with_settings("uv.png", |s:&mut ImageLoaderSettings| {
+                s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor{
+                    address_mode_u: bevy::render::texture::ImageAddressMode::Repeat,
+                    address_mode_v: bevy::render::texture::ImageAddressMode::Repeat,
+                    ..default()
+                })
+            })),
+            ..default()
+        }),
         transform: Transform::IDENTITY,
         ..default()
     });
@@ -230,6 +243,9 @@ fn setup(
                 commands.spawn((HalfMeshLabelKey(face.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", face)[6..]), TextStyle {color: FACE_COLOR.into(), ..default() }), style:Style{position_type:PositionType::Absolute,..default()}, ..default()}));
             }
         }
+    }
+    for vertex in debug_mesh.vertex_keys().take(2) {
+        commands.spawn((HalfMeshLabelKey(vertex.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", vertex)[8..]), TextStyle {color: VERTEX_COLOR.into(), ..default() }), style:Style{position_type:PositionType::Absolute,..default()}, ..default()}));
     }
 }
 
@@ -328,14 +344,51 @@ fn move_labels_to_with_camera(mut transform:Query<(&mut Style, &HalfMeshLabelKey
 fn take_screenshot(
     main_window: Query<Entity, With<PrimaryWindow>>,
     mut screenshot_manager: ResMut<ScreenshotManager>,
+    mesh: Res<DebugMesh>,
+    texture: Res<Assets<Image>>,
+    loader: Res<AssetServer>,
     mut counter: Local<u32>,
     mut next_state:ResMut<NextState<ScreenshotState>>
 ) {
-    let path = format!("./debug_screenshot-{}.png", *counter);
+    let screnshot_path = format!("./debug_screenshot-{}.png", *counter);
+    let uv_path = format!("./uv-{}.png", *counter);
     *counter += 1;
     screenshot_manager
-        .save_screenshot_to_disk(main_window.single(), path)
+        .save_screenshot_to_disk(main_window.single(), screnshot_path)
         .unwrap();
+    let image = texture.get(&loader.load("uv.png")).unwrap().clone();
+    match image.try_into_dynamic() {
+        Ok(dyn_img) => {
+                // discard the alpha channel which stores brightness values when HDR is enabled to make sure
+                // the screenshot looks right
+                let mut img = dyn_img.to_rgb8();
+                let width = img.width() as u32;
+                let uvs = mesh.attribute(&AttributeKind::UVs).unwrap().as_edge_vec2();
+                for face in mesh.face_keys() {
+                    let verts = mesh.goto(face).iter_loop().map(|p| uvs[*p]).collect::<StackVec<_>>();
+                    for (&from, &to) in verts.iter().circular_tuple_windows() {
+                        let w = width as f32;
+                        let from = from*w;//(0.5 + 0.5*from)*w;
+                        let to = to*w;//(0.5 + 0.5*to)*w;
+                        let x1 = from.x as i32;
+                        let y1 = from.y as i32;
+                        let x2 = to.x as i32;
+                        let y2 = to.y as i32;
+                        for (x, y) in Bresenham::new((x1, y1), (x2, y2)){
+                            if (x as u32) < width && (y as u32) < width {
+                                img.get_pixel_mut(x as u32, y as u32).0 = [0,0,0];
+                            }
+                        }
+                    }
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                match img.save(&uv_path) {
+                    Ok(_) => info!("uv map saved to {}", uv_path),
+                    Err(e) => error!("Cannot save screenshot, IO error: {e}"),
+                }
+        },
+        Err(e) => error!("Cannot save uv map, requested format not recognized: {e}")
+    }
     next_state.set(ScreenshotState::NotTakingScreenshot);
 }
 

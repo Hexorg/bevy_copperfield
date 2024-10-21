@@ -7,8 +7,8 @@ use slotmap::SecondaryMap;
 use crate::mesh::{attributes::{AttributeKind, AttributeValues, TraversalQueries}, traversal::Traversal, FaceId, HalfEdgeId, HalfEdgeMesh};
 
 mod fit;
+pub(crate) mod least_squares_conformal_maps;
 
-use fit::eigen_solve_symmetric3;
 
 /// Basis class to compute tangent space basis, ortogonalizations and to transform vectors from one space to another.
 pub struct Basis{

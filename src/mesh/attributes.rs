@@ -4,7 +4,7 @@ use bevy::{math::{Mat3A, VectorSpace}, prelude::{Mat3, Vec2, Vec3}};
 use itertools::{concat, Itertools};
 use slotmap::SecondaryMap;
 
-use super::{selection::Selection, traversal::Traversal, HalfEdgeId, StackVec, VertexId};
+use super::{selection::Selection, traversal::Traversal, HalfEdgeId, StackVec, Vertex, VertexId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AttributeKind {
@@ -21,6 +21,7 @@ pub type AttributeStore<K, T> = SecondaryMap<K, T>;
 pub enum AttributeValues {
     VertexU32(AttributeStore<VertexId, u32>),
     VertexVec3(AttributeStore<VertexId, Vec3>),
+    VertexVec2(AttributeStore<VertexId, Vec2>),
     VertexBool(AttributeStore<VertexId, bool>),
     EdgeVec2(AttributeStore<HalfEdgeId, Vec2>),
     EdgeVec3(AttributeStore<HalfEdgeId, Vec3>),
@@ -38,6 +39,20 @@ impl AttributeValues {
     pub fn as_vertices_u32_mut(&mut self) -> &mut AttributeStore<VertexId, u32> {
         match self {
             Self::VertexU32(v) => v,
+            _ => panic!("Unexpected attribute kind")
+        }
+    }
+
+    pub fn as_vertices_vec2(&self) -> &AttributeStore<VertexId, Vec2> {
+        match self {
+            Self::VertexVec2(v) => v,
+            _ => panic!("Unexpected attribute kind")
+        }
+    }
+
+    pub fn as_vertices_vec2_mut(&mut self) -> &mut AttributeStore<VertexId, Vec2> {
+        match self {
+            Self::VertexVec2(v) => v,
             _ => panic!("Unexpected attribute kind")
         }
     }
@@ -144,6 +159,11 @@ pub trait TraversalQueries{
     fn is_uv_seam(&self) -> bool;
     /// Returns how sharp this edge is by taking a dot product of adjacent face normals.
     fn sharpness(&self) -> f32;
+    /// Returns UV coordinates of the associated vertex.
+    fn uv(&self) -> Vec2;
+    /// Use earcutr to triangulage a polygon. Panics if the normal can't be calculated or 
+    /// polygon can't be triangulated. Returns an array of vertices, in CCW winding, three for each triangle.
+    fn triangulate(&self) -> Vec<VertexId>;
 }
 
 pub trait SelectionQueries {
@@ -163,6 +183,11 @@ impl<'m> TraversalQueries for Traversal<'m> {
         let vertex = self.vertex();
         let values = self.mesh.attribute(&super::attributes::AttributeKind::Positions).expect("Vertices don't have position attribute.");
         values.as_vertices_vec3().get(vertex).copied().unwrap()
+    }
+
+    fn uv(&self) -> Vec2 {
+        let values = self.mesh.attribute(&super::attributes::AttributeKind::UVs).expect("Vertices don't have UV attribute.");
+        values.as_edge_vec2().get(**self).copied().unwrap()
     }
 
     fn is_smooth_normals(&self) -> bool {
@@ -190,6 +215,17 @@ impl<'m> TraversalQueries for Traversal<'m> {
             },
             _ => 1.0 // cos(0) = 1.0
         }
+    }
+
+    fn triangulate(&self) -> Vec<VertexId> {
+        let normal = self.calculate_normal().unwrap();
+        let u = (self.position() - self.calculate_centroid()).normalize();
+        let v = u.cross(normal);
+        let mut vertex_ids = StackVec::new();
+        let vertices = self.iter_loop().map(|p| {vertex_ids.push(p.vertex()); let p = p.position(); [p.dot(u), p.dot(v)]}).flatten().collect::<Vec<_>>();
+        let result = earcutr::earcut(&vertices, &[], 2).unwrap();
+        // earcutr by default returns CW order winding. Call Iterator::rev() to change it to CCW
+        result.into_iter().map(|idx| vertex_ids[idx]).rev().collect()
     }
 }
 
