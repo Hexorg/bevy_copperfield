@@ -6,8 +6,17 @@ use slotmap::SecondaryMap;
 
 use crate::mesh::{attributes::{AttributeKind, AttributeValues, TraversalQueries}, traversal::Traversal, FaceId, HalfEdgeId, HalfEdgeMesh};
 
+
 mod fit;
+// TODO: Depending on complexity, several UV-Mapping approaches exist. Explore what's usefull.
+// 1. Cube/Cylindrical Mapping - Project each face of a mesh to a face of a cube/cylinder. 
+pub(crate) mod sphere_mapping;
+//      Since Cube/Cylinder UV mapping is known - projected faces can also be uv-mapped.
+// 2. Conformal Mapping - Generate UV-Mapping by preserving angle locality (e.g. angles of faces in 3D mesh are preverved in UV-map) 
 pub(crate) mod least_squares_conformal_maps;
+// 3. Radial Basis Functions (RBF)
+// 4. Multi-dimensional Scaling (MDS)
+// 5. Boundary representation (B-Rep) and Parametrization
 
 
 /// Basis class to compute tangent space basis, ortogonalizations and to transform vectors from one space to another.
@@ -222,7 +231,7 @@ fn find_distance_to_features_with_dikstra(mesh:&HalfEdgeMesh, features:&[FaceId]
     let mut other_local_maxima: Vec<FaceId> = Vec::new();
     for face in mesh.face_keys() {
         let face_distance = distances[face];
-        if face_distance != 0 && !mesh.goto(face).iter_loop().any(|e| face_distance <= e.twin().face().and_then(|f| Some(distances[f])).unwrap_or(0)) {
+        if face_distance != 0 && !mesh.goto(face).iter_loop().any(|e| face_distance < e.twin().face().and_then(|f| Some(distances[f])).unwrap_or(0)) {
             other_local_maxima.push(face);
             // assert_eq!(local_maxima.contains(&face), true);
         }

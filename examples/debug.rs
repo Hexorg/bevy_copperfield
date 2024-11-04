@@ -460,6 +460,7 @@ fn main() {
         config.line_perspective = false;
         config.line_width = 5.0;
     let (charts, mesh) = build_mesh();
+    println!("Mesh built");
     app
         .insert_resource(DebugMesh(mesh))
         .insert_resource(Charts{charts})

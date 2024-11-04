@@ -7,7 +7,7 @@ use selection::Selection;
 use slotmap::{KeyData, SecondaryMap, SlotMap};
 use smallvec::SmallVec;
 use traversal::{Traversal, VertexFlow};
-use crate::uvmesh::least_squares_conformal_maps;
+use crate::uvmesh::{least_squares_conformal_maps, sphere_mapping};
 
 pub mod attributes;
 pub(crate) mod traversal;
@@ -196,7 +196,7 @@ impl From<FaceId> for MeshPosition {
 /// A common way to represent a polygon mesh is a shared list of vertices and a list of faces storing pointers for its vertices. 
 /// This representation is both convenient and efficient for many purposes, however in some domains it proves ineffective.
 /// Write up about Half-Edge Data structure can be found [here](https://www.flipcode.com/archives/The_Half-Edge_Data_Structure.shtml)
-/// And [Here](https://jerryyin.info/geometry-processing-algorithms/half-edge/)1
+/// And [Here](https://jerryyin.info/geometry-processing-algorithms/half-edge/)
 pub struct HalfEdge {
     pub twin: HalfEdgeId, 
     pub next: HalfEdgeId,
@@ -245,8 +245,8 @@ pub struct HalfEdgeMesh {
     vertices: SlotMap<VertexId, Vertex>,
     faces: SlotMap<FaceId, Face>,
     halfedges: SlotMap<HalfEdgeId, HalfEdge>,
-    attributes: Attributes,
     is_smooth: bool,
+    attributes: Attributes,
 }
 
 
@@ -392,8 +392,9 @@ impl HalfEdgeMesh {
                         face_edges.push(start_flow.outgoing);
                         break;
                     }
-                    if end_flow.outgoing == start_flow.incoming && self.halfedges.contains_key(end_flow.outgoing) {
-                    }
+                    // if end_flow.outgoing == start_flow.incoming && self.halfedges.contains_key(end_flow.outgoing) {
+                    //     // Shouldn't do anything here because this will happen when we are filling holes. 
+                    // }
                     if let Some(&first_face_edge) = face_edges.first() {
                         if end_flow.outgoing == first_face_edge {
                             selected_end_flow = Some(*end_flow);
@@ -467,7 +468,8 @@ impl HalfEdgeMesh {
 
     pub fn calculate_uvs(&mut self) {
         let charts = create_charts(self);
-        least_squares_conformal_maps::project(self, charts);
+        // least_squares_conformal_maps::project(self, charts);
+        sphere_mapping::project(self, Vec3::Y);
         let values = self.attribute(&AttributeKind::UVs).expect("Vertices don't have UV attribute.").as_edge_vec2();
         let empty_edges = self.edge_keys().filter(|&e| !values.contains_key(e)).collect::<StackVec<_>>();
         println!("There are {} UV-unassigned edges", empty_edges.len());
