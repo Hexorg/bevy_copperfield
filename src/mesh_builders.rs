@@ -1,4 +1,4 @@
-use bevy::{math::VectorSpace, prelude::{Circle, Cuboid, Ellipse, Meshable, RegularPolygon, Vec2, Vec3}, render::mesh::{CircleMeshBuilder, EllipseMeshBuilder, RegularPolygonMeshBuilder}};
+use bevy::{prelude::{Cuboid, Ellipse, Meshable, RegularPolygon, Vec2, Vec3}, render::mesh::{CircleMeshBuilder, EllipseMeshBuilder}};
 use crate::mesh::{attributes::{AttributeKind, AttributeStore}, HalfEdgeId, HalfEdgeMesh, VertexId};
 
 /// A trait used for primitives toconstruct a [`HalfEdgeMesh`]

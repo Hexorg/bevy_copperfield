@@ -2,7 +2,7 @@ use bevy::prelude::Transform;
 use itertools::Itertools;
 
 
-use super::{edge_ops, face_ops, selection::MeshSelection, FaceId, HalfEdgeMesh, StackVec, VertexId};
+use super::{edge_ops, face_ops, FaceId, HalfEdgeMesh, StackVec, VertexId};
 
 pub fn transform(mesh:&mut HalfEdgeMesh, vertex:VertexId, transform:Transform) {
     let positions = mesh.attributes.get_mut(&super::attributes::AttributeKind::Positions).unwrap().as_vertices_vec3_mut();

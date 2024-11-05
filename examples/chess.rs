@@ -3,13 +3,13 @@
 
 use core::f32;
 
-use bevy::{pbr::{wireframe::{Wireframe, WireframePlugin}}, prelude::*};
-use bevy_copperfield::{mesh::{edge_ops, face_ops, vertex_ops, FaceId, HalfEdgeMesh}, mesh_builders::HalfEdgeMeshBuilder};
+use bevy::prelude::*;
+use bevy_copperfield::{mesh::{face_ops, FaceId, HalfEdgeMesh}, mesh_builders::HalfEdgeMeshBuilder};
 
 fn make_base(diameter:f32, resolution:usize) -> (HalfEdgeMesh, FaceId) {
     // Shapes are generally x2 height of the diameter
     let mut mesh = Circle::new(0.5*diameter).mesh().resolution(resolution).procgen();
-    mesh.set_smooth(false);
+    mesh.is_smooth = false;
     let face = match mesh.goto(Vec3::ZERO).face() {
         Some(f) => f,
         None => mesh.goto(Vec3::ZERO).twin().face().unwrap()
@@ -71,7 +71,7 @@ fn add_pawn_top(mesh:&mut HalfEdgeMesh, top_face:FaceId) {
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, WireframePlugin))
+        .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Update, update)
         .run();

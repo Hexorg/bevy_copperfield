@@ -2,8 +2,8 @@
 
 use core::f32;
 
-use bevy::{color, math::VectorSpace, pbr::wireframe::{Wireframe, WireframePlugin}, prelude::*};
-use bevy_copperfield::{mesh::{edge_ops, face_ops, mesh_ops, vertex_ops, HalfEdgeMesh}, mesh_builders::HalfEdgeMeshBuilder};
+use bevy::{color, prelude::*};
+use bevy_copperfield::{mesh::{face_ops, mesh_ops, HalfEdgeMesh}, mesh_builders::HalfEdgeMeshBuilder};
 use noise::{NoiseFn, Simplex};
 // use bevy_copperfield::{mesh::{vertex_ops::chamfer, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
 
@@ -42,7 +42,7 @@ fn make_fence(length:f32) -> HalfEdgeMesh {
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, WireframePlugin))
+        .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(Update, update)
         .run();
@@ -63,12 +63,12 @@ fn setup(
         ..default()
     });
 
-    commands.spawn((PbrBundle {
+    commands.spawn(PbrBundle {
         mesh: meshes.add(&make_fence(8.0)),
         material: assets.load("bark.jpg"),
         transform: Transform::from_xyz(-4.0, 0.0, 0.0),
         ..default()
-    }));
+    });
     // light
     commands.spawn(PointLightBundle {
         point_light: PointLight {

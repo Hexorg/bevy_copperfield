@@ -1,13 +1,13 @@
-use std::{cmp::Reverse, collections::BinaryHeap};
+use std::collections::BinaryHeap;
 
-use bevy::{prelude::{Vec2, Vec3}, scene::ron::de, utils::hashbrown::HashSet};
+use bevy::{prelude::{Vec2, Vec3}, utils::hashbrown::HashSet};
 use itertools::Itertools;
 use slotmap::SecondaryMap;
 
-use crate::mesh::{attributes::{AttributeKind, AttributeValues, TraversalQueries}, traversal::Traversal, FaceId, HalfEdgeId, HalfEdgeMesh};
+use crate::mesh::{attributes::{AttributeKind, AttributeValues, TraversalQueries}, FaceId, HalfEdgeId, HalfEdgeMesh};
 
 
-mod fit;
+// mod fit;
 // TODO: Depending on complexity, several UV-Mapping approaches exist. Explore what's usefull.
 // 1. Cube/Cylindrical Mapping - Project each face of a mesh to a face of a cube/cylinder. 
 pub(crate) mod primitive_mapping;
@@ -54,7 +54,7 @@ impl Basis {
         }
         // Ortogonalize
         tangent -= normal * normal.dot(tangent);
-        return tangent.normalize()
+        tangent.normalize()
     }
 
     #[inline]
@@ -75,12 +75,23 @@ pub struct Chart {
     // XAtlas has Material(u32) here too
 }
 
+impl Default for Chart {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Chart {
     pub fn new() -> Self {
         Self { faces: HashSet::new(), max_distance:0}
     }
 }
 
+pub enum ProjectionMethod{
+    LSCM,
+    Sphere{center:Vec3, radius:Vec3},
+    Cube{center:Vec3, scale:Vec3}
+}
 
 /// Based on [Xatlas](https://github.com/jpcy/xatlas/tree/master)'s implementation and
 /// https://dl.acm.org/doi/10.1145/566654.566590 paper
@@ -93,12 +104,10 @@ pub fn create_charts(mesh:&mut HalfEdgeMesh) -> Vec<Chart>{
 
     let mut neighborhoods =  HashSet::new();
     let mut feature_faces:Vec<FaceId> = Vec::new();
-    println!("there are {} initial seed edges", edges.len());
     let mut uv_seams:SecondaryMap<HalfEdgeId, bool> = SecondaryMap::new();
     for edge in edges {
         let feature = expand_feature_curve(mesh,&mut neighborhoods, edge);
         if feature.len() >= MIN_FEATURE_LENGTH {
-            println!("Found feature of length {}", feature.len());
             for &edge in &feature {
                 uv_seams.insert(edge, true);
                 let edge = mesh.goto(edge);
@@ -116,13 +125,9 @@ pub fn create_charts(mesh:&mut HalfEdgeMesh) -> Vec<Chart>{
             }
         }
     }
-    // mesh.add_attribute(AttributeKind::UVSeams, AttributeValues::EdgeBool(uv_seams));
-    println!("Mesh has {} faces", mesh.face_count());
-    println!("There are {} feature faces", feature_faces.len());
+
     let (maximas, distances) = find_distance_to_features_with_dikstra(mesh, &feature_faces);
-    println!("There are {} initial charts.", maximas.len());
     let (charts, boundaries) = expand_charts(mesh, &maximas, &distances);
-    println!("Found {} charts", charts.len());
     let mut uv_seams:SecondaryMap<HalfEdgeId, bool> = SecondaryMap::new();
     for &edge in &boundaries {
         let twin = * mesh.goto(edge).twin();
@@ -140,7 +145,6 @@ pub fn expand_feature_curve(mesh:&mut HalfEdgeMesh, neighborhood_edges:&mut Hash
     const THRESHOLD:f32 = 0.1;
     fn dfs(mesh:&HalfEdgeMesh, start_pos:Vec3, pos:HalfEdgeId, string:Vec<HalfEdgeId>, neighborhood_edges: &HashSet<HalfEdgeId>) -> (f32, Vec<HalfEdgeId>) {
         let v_pos = mesh.goto(pos).position();
-        let twin = *mesh.goto(pos).twin();
         let (mut best_path_sharpness, mut best_path) = (0.0, Vec::new());
         for next in mesh.goto(pos).next().iter_outgoing().sorted_by(|l, r| r.sharpness().partial_cmp(&l.sharpness()).unwrap_or(std::cmp::Ordering::Less)) {
             let next_pos = next.position();
@@ -210,7 +214,7 @@ fn find_distance_to_features_with_dikstra(mesh:&HalfEdgeMesh, features:&[FaceId]
     }
     while let Some(FaceWithDistance{face, distance}) = min_heap.pop() {
         let mut local_found = true;
-        for neighbor_face in mesh.goto(face).iter_loop().map(|e| e.adjacent_faces()).flatten() {
+        for neighbor_face in mesh.goto(face).iter_loop().flat_map(|e| e.adjacent_faces()) {
             let alternative_distance = distance + 1;
             if let Some(face) = neighbor_face.face() {
                 let mut known_distance = *distances.get(face).unwrap_or(&usize::MAX);
@@ -231,7 +235,7 @@ fn find_distance_to_features_with_dikstra(mesh:&HalfEdgeMesh, features:&[FaceId]
     let mut other_local_maxima: Vec<FaceId> = Vec::new();
     for face in mesh.face_keys() {
         let face_distance = distances[face];
-        if face_distance != 0 && !mesh.goto(face).iter_loop().any(|e| face_distance < e.twin().face().and_then(|f| Some(distances[f])).unwrap_or(0)) {
+        if face_distance != 0 && !mesh.goto(face).iter_loop().any(|e| face_distance <= e.twin().face().map(|f| distances[f]).unwrap_or(0)) {
             other_local_maxima.push(face);
             // assert_eq!(local_maxima.contains(&face), true);
         }
@@ -245,7 +249,7 @@ fn expand_charts(mesh:&HalfEdgeMesh, seeds:&[FaceId], distances:&SecondaryMap<Fa
     struct EdgeWithCost{
         edge:HalfEdgeId,
         cost:usize
-    };
+    }
     impl Ord for EdgeWithCost {
         fn cmp(&self, other: &Self) -> std::cmp::Ordering {
             self.cost.cmp(&other.cost)
@@ -278,7 +282,6 @@ fn expand_charts(mesh:&HalfEdgeMesh, seeds:&[FaceId], distances:&SecondaryMap<Fa
     }
 
     let threshold:i32 = global_max_distance / 4;
-    println!("Setting threshold at {threshold}");
     while let Some(e) = heap.pop() {
         let edge = mesh.goto(e.edge);
         let face = edge.face().unwrap();
@@ -311,7 +314,7 @@ fn expand_charts(mesh:&HalfEdgeMesh, seeds:&[FaceId], distances:&SecondaryMap<Fa
             for edge in twin.iter_loop() {
                 // Find if other faces are in our chart. Those that are should be removed from chart_boundaries,
                 // those that aren't should be added to the heap.
-                if !edge.twin().face().and_then(|f| Some(charts[face_chart_idx].faces.contains(&f))).unwrap_or(true) {
+                if !edge.twin().face().map(|f| charts[face_chart_idx].faces.contains(&f)).unwrap_or(true) {
                     heap.push(EdgeWithCost { edge: *edge, cost: distances[face_opposite] });
                 } else {
                     chart_boundaries.remove(&(*edge));

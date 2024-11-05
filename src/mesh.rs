@@ -7,7 +7,7 @@ use selection::Selection;
 use slotmap::{KeyData, SecondaryMap, SlotMap};
 use smallvec::SmallVec;
 use traversal::{Traversal, VertexFlow};
-use crate::uvmesh::{least_squares_conformal_maps, primitive_mapping};
+use crate::uvmesh::{create_charts, least_squares_conformal_maps, primitive_mapping, ProjectionMethod};
 
 pub mod attributes;
 pub(crate) mod traversal;
@@ -18,7 +18,7 @@ pub mod face_ops;
 pub mod mesh_ops;
 
 
-use crate::{uvmesh::create_charts, OPTIMIZE_FOR_NGONS_UNDER_SIZE};
+use crate::OPTIMIZE_FOR_NGONS_UNDER_SIZE;
 
 pub type StackVec<T> = SmallVec<[T;OPTIMIZE_FOR_NGONS_UNDER_SIZE]>;
 
@@ -55,6 +55,7 @@ slotmap::new_key_type! {
 }
 
 impl HalfEdgeId {
+    #[allow(dead_code)]
     /// Lets the crate create custom Id. Only used for unit-tests
     pub(crate) fn from_ffi(ffi:u64) -> Self {
         Self(KeyData::from_ffi(ffi))
@@ -62,6 +63,7 @@ impl HalfEdgeId {
 }
 
 impl VertexId {
+    #[allow(dead_code)]
     /// Lets the crate create custom Id. Only used for unit-tests
     pub(crate) fn from_ffi(ffi:u64) -> Self {
         Self(KeyData::from_ffi(ffi))
@@ -69,6 +71,7 @@ impl VertexId {
 }
 
 impl FaceId {
+    #[allow(dead_code)]
     /// Lets the crate create custom Id. Only used for unit-tests
     pub fn from_ffi(ffi:u64) -> Self {
         Self(KeyData::from_ffi(ffi))
@@ -88,7 +91,7 @@ impl Targettable for HalfEdgeId {
 
 impl Targettable for VertexId {
     #[inline]
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition {
+    fn get_mesh_position(self, _mesh:&HalfEdgeMesh) -> MeshPosition {
         self.into()
     }
 
@@ -99,7 +102,7 @@ impl Targettable for VertexId {
 
 impl Targettable for FaceId {
     #[inline]
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition {
+    fn get_mesh_position(self, _mesh:&HalfEdgeMesh) -> MeshPosition {
         self.into()
     }
     fn get_mesh_halfedge(self, mesh:&HalfEdgeMesh) -> HalfEdgeId {
@@ -165,7 +168,7 @@ impl Targettable for MeshPosition {
             MeshPosition::Face(face_id) => mesh[face_id].halfedge,
         }
     }
-    fn get_mesh_position(self, mesh:&HalfEdgeMesh) -> MeshPosition {
+    fn get_mesh_position(self, _mesh:&HalfEdgeMesh) -> MeshPosition {
         self
     }
 }
@@ -245,7 +248,11 @@ pub struct HalfEdgeMesh {
     vertices: SlotMap<VertexId, Vertex>,
     faces: SlotMap<FaceId, Face>,
     halfedges: SlotMap<HalfEdgeId, HalfEdge>,
-    is_smooth: bool,
+    /// Shade smooth or sharp. Default - true (smooth)
+    pub is_smooth: bool,
+    /// Which UV-Projection method to use to generate UV coordinates. 
+    /// Default - Cube mapping with Cube sides of 1.0 at the origin.
+    pub uv_projection:ProjectionMethod,
     attributes: Attributes,
 }
 
@@ -280,19 +287,20 @@ index_mesh_with!(HalfEdgeId, HalfEdge, halfedges);
 
 impl Default for HalfEdgeMesh {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl HalfEdgeMesh {
-    pub fn new() -> Self {
         Self{
             vertices: SlotMap::with_key(),
             faces: SlotMap::with_key(),
             halfedges: SlotMap::with_key(),
             attributes:Attributes::new(),
+            uv_projection: ProjectionMethod::Cube { center: Vec3::ZERO, scale: Vec3::ONE },
             is_smooth: true,
         }
+    }
+}
+
+impl HalfEdgeMesh {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     #[inline]
@@ -467,13 +475,18 @@ impl HalfEdgeMesh {
     }
 
     pub fn calculate_uvs(&mut self) {
-        // let charts = create_charts(self);
-        // least_squares_conformal_maps::project(self, charts);
+        match self.uv_projection {
+            ProjectionMethod::LSCM => {
+                let charts = create_charts(self);
+                least_squares_conformal_maps::project(self, charts);
+            },
+            ProjectionMethod::Cube { center, scale } => primitive_mapping::cube(self, Transform::from_translation(center).with_scale(scale)),
+            ProjectionMethod::Sphere { center, radius } => primitive_mapping::sphere(self, center, radius)
+        }
         // primitive_mapping::cube(self, Transform::from_translation(Vec3::Y+0.5*Vec3::Z).with_scale(Vec3{x:1.0, y:3.0, z:2.0}));
-        primitive_mapping::sphere(self, Vec3::Y, Vec3{x:0.75, y:1.5, z:0.75});
+        
         let values = self.attribute(&AttributeKind::UVs).expect("Vertices don't have UV attribute.").as_edge_vec2();
         let empty_edges = self.edge_keys().filter(|&e| !values.contains_key(e)).collect::<StackVec<_>>();
-        println!("There are {} UV-unassigned edges", empty_edges.len());
         let values = self.attribute_mut(&AttributeKind::UVs).expect("Vertices don't have UV attribute.").as_edge_vec2_mut();
         for v in empty_edges {
             values.insert(v, Vec2::ZERO);
@@ -510,10 +523,6 @@ impl HalfEdgeMesh {
     /// Insert attributes into mesh. Faces, Edges, and Vertices can have their own attribute data
     pub fn add_attribute(&mut self, kind:AttributeKind, store: impl Into<AttributeValues>) -> Option<AttributeValues> {
         self.attributes.insert(kind, store.into())
-    }
-
-    pub fn set_smooth(&mut self, is_smooth:bool) {
-        self.is_smooth = is_smooth
     }
 
     /// Get an attribute
@@ -593,7 +602,10 @@ impl HalfEdgeMesh {
             halfedge.face.iter_mut().for_each(|f| *f = face_map[*f]);
             let new_id = self.halfedges.insert(halfedge);
             self.vertices[halfedge.vertex].halfedge = new_id;
-            halfedge.face.and_then(|f| Some(self.faces[f].halfedge = new_id));
+            halfedge.face.map(|f| {
+                self.faces[f].halfedge = new_id;
+                
+            });
             edge_map.insert(edge_id, new_id);
         }
         for edge_id in other.edge_keys() {
@@ -734,7 +746,7 @@ mod tests {
     use slotmap::{KeyData, SecondaryMap};
     use smallvec::SmallVec;
 
-    use crate::{mesh::{FaceId, HalfEdgeMesh, VertexId}};
+    use crate::mesh::{FaceId, HalfEdgeMesh, VertexId};
 
     use super::{attributes::AttributeKind, HalfEdgeId};
 
@@ -743,7 +755,7 @@ mod tests {
     fn test_new_face(){
         let mut mesh = HalfEdgeMesh::new();
         let face = [mesh.new_vertex(), mesh.new_vertex(), mesh.new_vertex()];
-        let face_id = mesh.new_face(&face);
+        let _face_id = mesh.new_face(&face);
         assert_eq!(mesh.vertex_count(), 3);
         assert_eq!(mesh.count_islands(), 1);
         assert_eq!(mesh.count_face_edges(), 3);
@@ -756,9 +768,9 @@ mod tests {
     fn test_two_disjoint_faces(){
         let mut mesh = HalfEdgeMesh::new();
         let face = [mesh.new_vertex(), mesh.new_vertex(), mesh.new_vertex()];
-        let face_id = mesh.new_face(&face);
+        let _face_id = mesh.new_face(&face);
         let face = [mesh.new_vertex(), mesh.new_vertex(), mesh.new_vertex()];
-        let face_id = mesh.new_face(&face);
+        let _face_id = mesh.new_face(&face);
         
         assert_eq!(mesh.vertex_count(), 6);
         assert_eq!(mesh.count_islands(), 2);
@@ -770,9 +782,9 @@ mod tests {
     fn test_two_attached_faces(){
         let mut mesh = HalfEdgeMesh::new();
         let face = [mesh.new_vertex(), mesh.new_vertex(), mesh.new_vertex()];
-        let face_id = mesh.new_face(&face);
+        let _face_id = mesh.new_face(&face);
         let face = [face[1], face[0], mesh.new_vertex()];
-        let face_id = mesh.new_face(&face);
+        let _face_id = mesh.new_face(&face);
         assert_eq!(mesh.vertex_count(), 4);
         assert_eq!(mesh.count_islands(), 1);
         assert_eq!(mesh.count_face_edges(), 6);

@@ -25,7 +25,6 @@ pub fn delete(mesh:&mut HalfEdgeMesh, target:HalfEdgeId, is_fill:bool) -> Option
     let edge_vertex = edge.vertex();
 
     let twin = edge.twin();
-    let edge = *edge;
     let twin_next = *twin.next();
     let twin_previous = *twin.previous();
     let twin_face = twin.face();

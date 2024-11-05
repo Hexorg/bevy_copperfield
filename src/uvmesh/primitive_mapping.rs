@@ -3,7 +3,7 @@ use core::f32;
 use bevy::prelude::{Transform, TransformPoint, Vec2, Vec3};
 use slotmap::SecondaryMap;
 
-use crate::mesh::{attributes::{AttributeStore, SelectionQueries, TraversalQueries}, HalfEdgeId, HalfEdgeMesh};
+use crate::mesh::{attributes::{SelectionQueries, TraversalQueries}, HalfEdgeId, HalfEdgeMesh};
 
 
 pub(crate) fn sphere(mesh:&mut HalfEdgeMesh, sphere_center:Vec3, sphere_radius:Vec3) {

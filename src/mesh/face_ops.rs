@@ -1,7 +1,7 @@
 use bevy::prelude::{default, Transform};
 use itertools::Itertools;
 
-use super::{attributes::{SelectionQueries, TraversalQueries}, Face, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
+use super::{attributes::SelectionQueries, Face, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
 
 pub fn transform(mesh:&mut HalfEdgeMesh, face:FaceId, transform:Transform) {
     let verticies = mesh.goto(face).iter_loop().map(|e| e.vertex()).collect::<StackVec<_>>();
@@ -41,7 +41,6 @@ pub fn split(mesh:&mut HalfEdgeMesh, v:VertexId, w:VertexId) -> HalfEdgeId {
     let edge_previous = twin_next.previous();
     let edge_next = twin_next.iter_loop().find(|t| t.vertex() == w).unwrap();
     let edge_next = edge_next;
-    let v = v.vertex();
     let (edge, mut twin) = mesh.attach_edge(*edge_previous, *edge_next);
 
     let face_id = mesh.faces.insert(Face { halfedge: twin });
@@ -75,7 +74,7 @@ pub fn extrude(mesh:&mut HalfEdgeMesh, face:FaceId, length:f32) -> StackVec<Face
 
     let new_verts = (0..face_edges.len()).map(|_| mesh.new_vertex()).collect::<StackVec<_>>();
     let v = new_verts[0]; // Save a new vertex to find its boundary edge later
-    let new_faces = face_edges.iter().zip(new_verts).circular_tuple_windows().map(|((&(edge, v1, _), v2), (&(_, v3, _), v4))| {
+    let new_faces = face_edges.iter().zip(new_verts).circular_tuple_windows().map(|((&(_, v1, _), v2), (&(_, v3, _), v4))| {
         // We don't have remove us from next edge ahead because mesh.new_face doesn't modify or depend on twin edges
         let positions = mesh.attributes.get_mut(&super::attributes::AttributeKind::Positions).unwrap().as_vertices_vec3_mut();
         positions.insert(v2, positions[v1]+shift);

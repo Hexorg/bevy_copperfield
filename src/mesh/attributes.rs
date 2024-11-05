@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
 
-use bevy::{math::{Mat3A, VectorSpace}, prelude::{Mat3, Vec2, Vec3}};
-use itertools::{concat, Itertools};
+use bevy::prelude::{Mat3, Vec2, Vec3};
 use slotmap::SecondaryMap;
 
-use super::{selection::Selection, traversal::Traversal, HalfEdgeId, StackVec, Vertex, VertexId};
+use super::{selection::Selection, traversal::Traversal, HalfEdgeId, StackVec, VertexId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AttributeKind {
@@ -222,7 +221,7 @@ impl<'m> TraversalQueries for Traversal<'m> {
         let u = (self.position() - self.calculate_centroid()).normalize();
         let v = u.cross(normal);
         let mut vertex_ids = StackVec::new();
-        let vertices = self.iter_loop().map(|p| {vertex_ids.push(p.vertex()); let p = p.position(); [p.dot(u), p.dot(v)]}).flatten().collect::<Vec<_>>();
+        let vertices = self.iter_loop().flat_map(|p| {vertex_ids.push(p.vertex()); let p = p.position(); [p.dot(u), p.dot(v)]}).collect::<Vec<_>>();
         let result = earcutr::earcut(&vertices, &[], 2).unwrap();
         // earcutr by default returns CW order winding. Call Iterator::rev() to change it to CCW
         result.into_iter().map(|idx| vertex_ids[idx]).rev().collect()

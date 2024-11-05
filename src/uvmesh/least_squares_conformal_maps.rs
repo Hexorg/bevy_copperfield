@@ -1,10 +1,10 @@
 use core::f32;
 
 // use argmin::core::{Executor, Operator, State};
-use bevy::{math::Vec2, prelude::{IntoSystem, Vec3}, utils::{hashbrown::HashMap, HashSet}};
+use bevy::{math::Vec2, prelude::Vec3, utils::{hashbrown::HashMap, HashSet}};
 use itertools::Itertools;
 use slotmap::SecondaryMap;
-use sprs::{linalg::ordering::start, CsMatView, CsVec, CsVecView, TriMat};
+use sprs::{CsMatView, CsVec, CsVecView, TriMat};
 
 use crate::mesh::{attributes::{AttributeValues, TraversalQueries}, FaceId, HalfEdgeId, HalfEdgeMesh, StackVec, VertexId};
 
@@ -12,17 +12,17 @@ use super::Chart;
 
 /// Solves Ax = b matrix in a least-squares way. A does not need to be diagonal, or square.
 /// Based on https://web.stanford.edu/group/SOL/software/cgls/
-fn conjugate_gradient_least_squares(A:CsMatView<f32>, b:CsVecView<'_, f32>, guess:Option<CsVecView<'_, f32>>, tolerance:f32) -> Option<CsVec<f32>> {
-    let max_iteration = A.cols().max(A.rows());
-    let empty = CsVec::empty(A.cols());
+fn conjugate_gradient_least_squares(a:CsMatView<f32>, b:CsVecView<'_, f32>, guess:Option<CsVecView<'_, f32>>, tolerance:f32) -> Option<CsVec<f32>> {
+    let max_iteration = a.cols().max(a.rows());
+    let empty = CsVec::empty(a.cols());
     let mut x = if let Some(x0) = guess {
         x0.to_owned()
     } else {
         empty
     };
-    let A_transpose = A.transpose_view();
-    let mut r = &b - &(&A*&x).view();
-    let mut s = &A_transpose * &r.view();
+    let a_transpose = a.transpose_view();
+    let mut r = &b - &(&a*&x).view();
+    let mut s = &a_transpose * &r.view();
 
     let mut p = s.clone();
     let norm_s0 = s.l2_norm();
@@ -31,7 +31,7 @@ fn conjugate_gradient_least_squares(A:CsMatView<f32>, b:CsVecView<'_, f32>, gues
     let mut x_max = norm_x;
 
     for _ in 0..max_iteration {
-        let q = &A * &p;
+        let q = &a * &p;
         let delta = q.squared_l2_norm();
         if delta < 0.0 {
             return None;
@@ -41,7 +41,7 @@ fn conjugate_gradient_least_squares(A:CsMatView<f32>, b:CsVecView<'_, f32>, gues
         x = x + p.map(|&v| v*alpha);
         r = &r - &q.map(|&v| v*alpha);
 
-        s = &A_transpose * &r.view();
+        s = &a_transpose * &r.view();
         let norm_s = s.l2_norm();
         let gamma1 = gamma;
         gamma = norm_s.powi(2);
@@ -66,7 +66,7 @@ fn lscm(mesh:&HalfEdgeMesh, chart:&HashSet<FaceId>) -> Vec<(HalfEdgeId, Vec2)> {
     let pinned_uv = [Vec2{x:0.5, y:0.5}, Vec2{x:0.5, y:1.0}];
     let pinned_vertices = mesh.goto(*chart.iter().next().unwrap()).iter_loop().take(2).map(|t| t.vertex()).collect::<StackVec<_>>();
     let pinned_vertex_count = pinned_vertices.len();
-    let free_vertex_count = chart.iter().map(|&f| mesh.goto(f).iter_loop().map(|e| e.vertex())).flatten().unique().count() - pinned_vertex_count;
+    let free_vertex_count = chart.iter().flat_map(|&f| mesh.goto(f).iter_loop().map(|e| e.vertex())).unique().count() - pinned_vertex_count;
     
     let mut coefficients = HashMap::new();
     let mut triangle_count = 0; // amount of triangles
@@ -97,8 +97,8 @@ fn lscm(mesh:&HalfEdgeMesh, chart:&HashSet<FaceId>) -> Vec<(HalfEdgeId, Vec2)> {
         }
     }
     
-    let mut A = TriMat::new((2*triangle_count, 2*free_vertex_count));
-    let mut B = TriMat::new((2*triangle_count, 2*pinned_vertex_count));
+    let mut a_mat = TriMat::new((2*triangle_count, 2*free_vertex_count));
+    let mut b_mat = TriMat::new((2*triangle_count, 2*pinned_vertex_count));
     let mut b_indices = Vec::new();
     let mut b_data = Vec::new();
 
@@ -120,10 +120,10 @@ fn lscm(mesh:&HalfEdgeMesh, chart:&HashSet<FaceId>) -> Vec<(HalfEdgeId, Vec2)> {
                 let m_ij = coefficients[&pair];
                 if pinned_vertices.contains(&pair.0) {
                     let vertex_idx = if pinned_vertices[0] == pair.0 { 0 } else { 1 };  
-                    B.add_triplet(triangle_idx, vertex_idx, m_ij.x);
-                    B.add_triplet(triangle_count+triangle_idx, pinned_vertex_count+vertex_idx, m_ij.x);
-                    B.add_triplet(triangle_idx, pinned_vertex_count+vertex_idx, -m_ij.y);
-                    B.add_triplet(triangle_count+triangle_idx, vertex_idx, m_ij.y);
+                    b_mat.add_triplet(triangle_idx, vertex_idx, m_ij.x);
+                    b_mat.add_triplet(triangle_count+triangle_idx, pinned_vertex_count+vertex_idx, m_ij.x);
+                    b_mat.add_triplet(triangle_idx, pinned_vertex_count+vertex_idx, -m_ij.y);
+                    b_mat.add_triplet(triangle_count+triangle_idx, vertex_idx, m_ij.y);
                 } else {
                     let vertex_mapping_size = vertex_mapping.len();
                     let vertex_idx = if let Some(vid) = vertex_mapping.get(pair.0) {
@@ -132,34 +132,31 @@ fn lscm(mesh:&HalfEdgeMesh, chart:&HashSet<FaceId>) -> Vec<(HalfEdgeId, Vec2)> {
                         vertex_mapping.insert(pair.0, vertex_mapping_size);
                         vertex_mapping_size
                     };
-                    A.add_triplet(triangle_idx, vertex_idx, m_ij.x);
-                    A.add_triplet(triangle_idx, free_vertex_count + vertex_idx, -m_ij.y);
-                    A.add_triplet(triangle_count + triangle_idx, free_vertex_count + vertex_idx, m_ij.x);
-                    A.add_triplet(triangle_count + triangle_idx, vertex_idx, m_ij.y);
+                    a_mat.add_triplet(triangle_idx, vertex_idx, m_ij.x);
+                    a_mat.add_triplet(triangle_idx, free_vertex_count + vertex_idx, -m_ij.y);
+                    a_mat.add_triplet(triangle_count + triangle_idx, free_vertex_count + vertex_idx, m_ij.x);
+                    a_mat.add_triplet(triangle_count + triangle_idx, vertex_idx, m_ij.y);
                 }
             }
             triangle_idx += 1;
         }
     }
     let b = CsVec::new_from_unsorted(pinned_vertex_count*2, b_indices, b_data).unwrap();
-    let A = A.to_csc::<usize>();
-    let B = B.to_csc::<usize>();
-    let r = -(&B * &b);
-    let x = conjugate_gradient_least_squares(A.view(), r.view(), None, 1.0/256.0).unwrap();
+    let a_mat = a_mat.to_csc::<usize>();
+    let b_mat = b_mat.to_csc::<usize>();
+    let r = -(&b_mat * &b);
+    let x = conjugate_gradient_least_squares(a_mat.view(), r.view(), None, 1.0/256.0).unwrap();
 
-    let faces = chart.len();
-    chart.iter().map(|&f| mesh.goto(f).iter_loop().map(|e| {
+    chart.iter().flat_map(|&f| mesh.goto(f).iter_loop().map(|e| {
         let uv = if let Some(&i) = vertex_mapping.get(e.vertex()) {
             Vec2{x:*x.get(i).unwrap_or(&0.0), y:*x.get(i+free_vertex_count).unwrap_or(&0.0)}
+        } else if e.vertex() == pinned_vertices[0] {
+            pinned_uv[0]
         } else {
-            if e.vertex() == pinned_vertices[0] {
-                pinned_uv[0]
-            } else {
-                pinned_uv[1]
-            }
+            pinned_uv[1]
         };
         (*e, uv)
-    })).flatten().collect()
+    })).collect()
 }
 
 
@@ -169,7 +166,6 @@ pub(crate) fn project(mesh:&mut HalfEdgeMesh, charts:Vec<Chart>) {
     for mut chart in charts.into_iter() {
         let mut edge_map = lscm(mesh, &chart.faces);
         while let Some(new_chart) = check_self_intersection(mesh, &chart.faces, &edge_map) {
-            println!("New chart faces: {new_chart:?}");
             chart.faces = chart.faces.difference(&new_chart).copied().collect::<HashSet<_>>();
             edge_map = lscm(mesh, &chart.faces);
             uvmaps.push(lscm(mesh, &new_chart));
@@ -195,8 +191,7 @@ pub(crate) fn project(mesh:&mut HalfEdgeMesh, charts:Vec<Chart>) {
 
 fn check_self_intersection(mesh:&HalfEdgeMesh, chart:&HashSet<FaceId>, map:&[(HalfEdgeId, Vec2)]) -> Option<HashSet<FaceId>> {
     let map:HashMap<HalfEdgeId, Vec2> = HashMap::from_iter(map.iter().copied());
-    println!("Checking for collisions in a chart of {} edges", map.len());
-    let chart_boundary_edge = |e:HalfEdgeId| mesh.goto(e).twin().face().and_then(|f| Some(!chart.contains(&f))).unwrap_or(true);
+    let chart_boundary_edge = |e:HalfEdgeId| mesh.goto(e).twin().face().map(|f| !chart.contains(&f)).unwrap_or(true);
     if let Some((&start_edge, &start_uv)) = map.iter().find(|(e, _)| chart_boundary_edge(**e)) {
         let mut trace = vec![(start_edge, start_uv)];
         let mut current_edge = start_edge;
@@ -207,21 +202,20 @@ fn check_self_intersection(mesh:&HalfEdgeMesh, chart:&HashSet<FaceId>, map:&[(Ha
             if Some(&(next_edge, line_to)) == trace.first() {
                 break;
             }
-            if let Some((idx, collision)) = trace.iter().tuple_windows().enumerate().find(|(_, ((_, f), (l, t)))| {
+            if let Some((idx, _collision)) = trace.iter().tuple_windows().enumerate().find(|(_, ((_, f), (l, t)))| {
                 let t = *t;
                 let f = *f;
                 let c = (line_to-line_from).perp_dot(t-f).recip();
                 let u = c*(t-f).perp_dot(line_from-f);
                 let v = c*(line_to-line_from).perp_dot(line_from-f);
-                *l != current_edge && u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0
+                *l != current_edge && (0.0..=1.0).contains(&u) && (0.0..=1.0).contains(&v)
             }) {
-                println!("After tracing {} edges, {next_edge:?} {line_from:?}-{line_to:?} intersects edge {:?} {:?}-{:?}, resulting in an island of {} edges", trace.len(), collision.0.0,  collision.0.1, collision.1.1, trace.len()-idx);
                 let mut new_chart = HashSet::new();
                 fn insert(mesh:&HalfEdgeMesh, chart:&mut HashSet<FaceId>, trace:&[(HalfEdgeId, Vec2)], edge:HalfEdgeId) {
                     if let Some(face) = mesh.goto(edge).face() {
                         if chart.insert(face) {
                             for edge in mesh.goto(face).iter_loop() {
-                                if trace.iter().find(|(e,_)| *e == *edge).is_none() && edge.face().and_then(|f| Some(!chart.contains(&f))).unwrap_or(false) {
+                                if !trace.iter().any(|(e,_)| *e == *edge) && edge.face().map(|f| !chart.contains(&f)).unwrap_or(false) {
                                     insert(mesh, chart, trace, *edge);
                                 }
                             }

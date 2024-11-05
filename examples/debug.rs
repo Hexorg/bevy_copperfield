@@ -1,12 +1,12 @@
 use core::f32;
 
-use bevy_copperfield::{mesh::{attributes::{AttributeKind, AttributeValues, SelectionQueries, TraversalQueries}, edge_ops, face_ops, mesh_ops, vertex_ops, FaceId, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId}, mesh_builders::HalfEdgeMeshBuilder, uvmesh::{create_charts, Chart}};
+use bevy_copperfield::{mesh::{attributes::{AttributeKind, SelectionQueries, TraversalQueries}, face_ops, mesh_ops, vertex_ops, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec}, mesh_builders::HalfEdgeMeshBuilder, uvmesh::{Chart, ProjectionMethod}};
 use camera_controls::{capture_mouse, FlyingCamera};
 use itertools::Itertools;
 use line_drawing::Bresenham;
-use slotmap::{SecondaryMap};
+use slotmap::SecondaryMap;
 use smallvec::SmallVec;
-use bevy::{asset::AssetLoader, color, math::VectorSpace, prelude::*, render::{camera::ScalingMode, texture::{ImageFormat, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}, view::screenshot::ScreenshotManager}, window::PrimaryWindow};
+use bevy::{color, prelude::*, render::{camera::ScalingMode, texture::{ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}, view::screenshot::ScreenshotManager}, window::PrimaryWindow};
 
 #[derive(Resource)]
 pub struct Charts{
@@ -16,7 +16,6 @@ pub struct Charts{
 pub fn cuboid_tests() -> (Vec<Chart>, HalfEdgeMesh) {
 
     let mut mesh = Cuboid::new(1.0, 1.0, 1.0).procgen();
-    mesh.set_smooth(true);
     let faces = mesh.face_keys().collect::<StackVec<_>>();
     let face = faces[1];
     face_ops::extrude(&mut mesh, face, 1.0);
@@ -26,13 +25,16 @@ pub fn cuboid_tests() -> (Vec<Chart>, HalfEdgeMesh) {
     mesh_ops::subdivide(&mut mesh);
     mesh_ops::subdivide(&mut mesh);
     // let charts = create_charts(&mut mesh);
+    mesh.uv_projection = ProjectionMethod::Cube { center: Vec3{x:0.0, y:1.0, z:0.5}, scale: Vec3{x:1.0, y:3.0, z:2.0} };
+    // mesh.uv_projection = ProjectionMethod::Sphere {center: Vec3{x:0.0, y:1.0, z:0.0}, radius: Vec3{x:1.0, y:1.5, z:1.0} };
+    // mesh.uv_projection = ProjectionMethod::LSCM;
     mesh.calculate_uvs();
     (Vec::new(), mesh)
 }
 
 pub fn sample_mesh_tests() -> HalfEdgeMesh {
     let mut mesh = sample_mesh();
-    mesh.set_smooth(false);
+    mesh.is_smooth = false;
     let v = mesh.vertex_keys().collect::<SmallVec<[_;9]>>();
     let face = vertex_ops::chamfer(&mut mesh, v[2], 0.25);
     face_ops::extrude(&mut mesh, face, 0.5);
@@ -43,7 +45,7 @@ pub fn sample_mesh_tests() -> HalfEdgeMesh {
 
 pub fn builder_tests() -> HalfEdgeMesh {
     let mut mesh = Circle::new(0.5).mesh().resolution(8).procgen();
-    mesh.set_smooth(false);
+    mesh.is_smooth = false;
     let face = mesh.goto(Vec3::ZERO).twin().face().unwrap();
     face_ops::transform(&mut mesh, face, Transform::from_translation(-0.5*Vec3::Y).with_rotation(Quat::from_rotation_x(-f32::consts::FRAC_PI_2)));
     
@@ -198,11 +200,11 @@ fn setup(
         mesh: meshes.add(Mesh::from(&debug_mesh.0)),
         material: materials.add(StandardMaterial{
             base_color_texture:Some(assets.load_with_settings("uv.png", |s:&mut ImageLoaderSettings| {
-                // s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor{
-                //     address_mode_u: bevy::render::texture::ImageAddressMode::Repeat,
-                //     address_mode_v: bevy::render::texture::ImageAddressMode::Repeat,
-                //     ..default()
-                // })
+                s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor{
+                    address_mode_u: bevy::render::texture::ImageAddressMode::Repeat,
+                    address_mode_v: bevy::render::texture::ImageAddressMode::Repeat,
+                    ..default()
+                })
             })),
             ..default()
         }),
@@ -244,9 +246,9 @@ fn setup(
             }
         }
     }
-    for vertex in debug_mesh.vertex_keys().take(2) {
-        commands.spawn((HalfMeshLabelKey(vertex.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", vertex)[8..]), TextStyle {color: VERTEX_COLOR.into(), ..default() }), style:Style{position_type:PositionType::Absolute,..default()}, ..default()}));
-    }
+    // for vertex in debug_mesh.vertex_keys().take(2) {
+    //     commands.spawn((HalfMeshLabelKey(vertex.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", vertex)[8..]), TextStyle {color: VERTEX_COLOR.into(), ..default() }), style:Style{position_type:PositionType::Absolute,..default()}, ..default()}));
+    // }
 }
 
 fn spawn_labels(debug_mesh:Res<DebugMesh>,mut commands: Commands) {
@@ -365,7 +367,7 @@ fn take_screenshot(
                 // discard the alpha channel which stores brightness values when HDR is enabled to make sure
                 // the screenshot looks right
                 let mut img = dyn_img.to_rgb8();
-                let width = img.width() as u32;
+                let width = img.width();
                 let uvs = mesh.attribute(&AttributeKind::UVs).unwrap().as_edge_vec2();
                 for face in mesh.face_keys() {
                     let verts = mesh.goto(face).iter_loop().map(|p| uvs[*p]).collect::<StackVec<_>>();
@@ -463,7 +465,6 @@ fn main() {
         config.line_perspective = false;
         config.line_width = 5.0;
     let (charts, mesh) = build_mesh();
-    println!("Mesh built");
     app
         .insert_resource(DebugMesh(mesh))
         .insert_resource(Charts{charts})

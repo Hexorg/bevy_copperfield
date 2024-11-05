@@ -3,6 +3,14 @@
 Example box from Cuboid:
 ![Example extruded and chamfered Cuboid](https://github.com/Hexorg/bevy_copperfield/blob/main/extrude_bevel_debug.png)
 
+# UV Unwrap
+
+`bevy_copperfield` now supports 3 methods for automatic UV-unwrapping - Cube mapping, Sphere mapping, and [Least Squares Conformal Mapping](https://en.wikipedia.org/wiki/Least_squares_conformal_map)
+
+![Cube Mapped complex shape](https://github.com/Hexorg/bevy_copperfield/blob/main/cube_mapping.png)
+
+![Face outline visible on UV unwrap](https://github.com/Hexorg/bevy_copperfield/blob/main/cube_uv.png)
+
 # Approach
 
 `bevy_copperfield` implements a [Half-Edge Mesh data-structure](https://www.flipcode.com/archives/The_Half-Edge_Data_Structure.shtml) which allows us to quickly navigate and edit the mesh, providing methods to extrude, subdivide, and bevel parts of the mesh. The debug eample provides a nice visualization of the internal data-structure implemented, as each drawn edge is a pointer to the next one.
