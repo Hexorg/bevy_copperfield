@@ -198,11 +198,11 @@ fn setup(
         mesh: meshes.add(Mesh::from(&debug_mesh.0)),
         material: materials.add(StandardMaterial{
             base_color_texture:Some(assets.load_with_settings("uv.png", |s:&mut ImageLoaderSettings| {
-                s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor{
-                    address_mode_u: bevy::render::texture::ImageAddressMode::Repeat,
-                    address_mode_v: bevy::render::texture::ImageAddressMode::Repeat,
-                    ..default()
-                })
+                // s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor{
+                //     address_mode_u: bevy::render::texture::ImageAddressMode::Repeat,
+                //     address_mode_v: bevy::render::texture::ImageAddressMode::Repeat,
+                //     ..default()
+                // })
             })),
             ..default()
         }),
@@ -268,10 +268,13 @@ fn despawn_labels(labels:Query<Entity, With<HalfMeshLabelKey>>, mut commands: Co
 }
 
 fn draw_origin_gizmos(mut gizmos:Gizmos) {
-    use color::palettes::basic::{RED, GREEN, BLUE};
-    gizmos.line(Vec3::ZERO, Vec3::X, RED);
-    gizmos.line(Vec3::ZERO, Vec3::Y, GREEN);
-    gizmos.line(Vec3::ZERO, Vec3::Z, BLUE);
+    // use color::palettes::basic::{RED, GREEN, BLUE};
+    // gizmos.line(Vec3::ZERO, Vec3::X, RED);
+    // gizmos.line(Vec3::ZERO, Vec3::Y, GREEN);
+    // gizmos.line(Vec3::ZERO, Vec3::Z, BLUE);
+    gizmos.axes(Transform::IDENTITY, 1.0);
+    // gizmos.axes(Transform::from_translation(Vec3::Y), 1.0);
+    // gizmos.cuboid(Transform::from_translation(Vec3::Y+0.5*Vec3::Z).with_scale(Vec3{x:1.0, y:3.0, z:2.0}), color::palettes::css::ORANGE);
 }
 
 fn draw_vertex_gizmos(mesh:Res<DebugMesh>, mut gizmos:Gizmos) {

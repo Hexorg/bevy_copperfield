@@ -1,13 +1,13 @@
 
 
 use attributes::{AttributeKind, AttributeStore, AttributeValues, Attributes, SelectionQueries, TraversalQueries};
-use bevy::{prelude::{default, Vec2, Vec3}, render::{mesh::{self, Mesh as BevyMesh}, render_asset::RenderAssetUsages}, utils::hashbrown::HashSet};
+use bevy::{prelude::{default, Transform, Vec2, Vec3}, render::{mesh::{self, Mesh as BevyMesh}, render_asset::RenderAssetUsages}, utils::hashbrown::HashSet};
 use itertools::Itertools;
 use selection::Selection;
 use slotmap::{KeyData, SecondaryMap, SlotMap};
 use smallvec::SmallVec;
 use traversal::{Traversal, VertexFlow};
-use crate::uvmesh::{least_squares_conformal_maps, sphere_mapping};
+use crate::uvmesh::{least_squares_conformal_maps, primitive_mapping};
 
 pub mod attributes;
 pub(crate) mod traversal;
@@ -467,9 +467,10 @@ impl HalfEdgeMesh {
     }
 
     pub fn calculate_uvs(&mut self) {
-        let charts = create_charts(self);
+        // let charts = create_charts(self);
         // least_squares_conformal_maps::project(self, charts);
-        sphere_mapping::project(self, Vec3::Y);
+        // primitive_mapping::cube(self, Transform::from_translation(Vec3::Y+0.5*Vec3::Z).with_scale(Vec3{x:1.0, y:3.0, z:2.0}));
+        primitive_mapping::sphere(self, Vec3::Y, Vec3{x:0.75, y:1.5, z:0.75});
         let values = self.attribute(&AttributeKind::UVs).expect("Vertices don't have UV attribute.").as_edge_vec2();
         let empty_edges = self.edge_keys().filter(|&e| !values.contains_key(e)).collect::<StackVec<_>>();
         println!("There are {} UV-unassigned edges", empty_edges.len());

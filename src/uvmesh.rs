@@ -10,7 +10,7 @@ use crate::mesh::{attributes::{AttributeKind, AttributeValues, TraversalQueries}
 mod fit;
 // TODO: Depending on complexity, several UV-Mapping approaches exist. Explore what's usefull.
 // 1. Cube/Cylindrical Mapping - Project each face of a mesh to a face of a cube/cylinder. 
-pub(crate) mod sphere_mapping;
+pub(crate) mod primitive_mapping;
 //      Since Cube/Cylinder UV mapping is known - projected faces can also be uv-mapped.
 // 2. Conformal Mapping - Generate UV-Mapping by preserving angle locality (e.g. angles of faces in 3D mesh are preverved in UV-map) 
 pub(crate) mod least_squares_conformal_maps;
