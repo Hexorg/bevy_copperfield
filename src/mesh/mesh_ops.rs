@@ -86,3 +86,19 @@ pub fn subdivide(mesh:&mut HalfEdgeMesh) {
 
     // todo!("Figure out how to split mesh")
 }
+
+/// Invert winding of all faces in a mesh. Since normal direction is calculated based 
+/// of face winding, this effectively inverses normals.
+pub fn invert_normals(mesh:&mut HalfEdgeMesh) {
+    for face in mesh.faces.keys() {
+        let edges = mesh.goto(face).iter_loop().map(|t| *t).collect::<StackVec<_>>();
+        let mut last_twin = mesh.halfedges[*edges.first().unwrap()].twin;
+        for (&from, &to) in edges.iter().circular_tuple_windows() {
+            mesh.halfedges[to].next = from;
+            let tmp = mesh.halfedges[to].twin;
+            mesh.halfedges[to].twin = last_twin;
+            mesh.halfedges[last_twin].twin = to;
+            last_twin = tmp;
+        }
+    }
+}

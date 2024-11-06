@@ -2,7 +2,7 @@
 name = "bevy_copperfield"
 description = "Procedural mesh editor, based on Half-Edge-Mesh datastructure"
 repository = "https://github.com/Hexorg/bevy_copperfield"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT"
 readme = "README.md"

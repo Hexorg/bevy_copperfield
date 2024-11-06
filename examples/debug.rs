@@ -24,6 +24,7 @@ pub fn cuboid_tests() -> (Vec<Chart>, HalfEdgeMesh) {
     face_ops::extrude(&mut mesh, middle_face, 1.0);
     mesh_ops::subdivide(&mut mesh);
     mesh_ops::subdivide(&mut mesh);
+    mesh_ops::invert_normals(&mut mesh);
     // let charts = create_charts(&mut mesh);
     mesh.uv_projection = ProjectionMethod::Cube { center: Vec3{x:0.0, y:1.0, z:0.5}, scale: Vec3{x:1.0, y:3.0, z:2.0} };
     // mesh.uv_projection = ProjectionMethod::Sphere {center: Vec3{x:0.0, y:1.0, z:0.0}, radius: Vec3{x:1.0, y:1.5, z:1.0} };
