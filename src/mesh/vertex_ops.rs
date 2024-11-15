@@ -1,30 +1,47 @@
 use bevy::prelude::Transform;
 use itertools::Itertools;
 
-
 use super::{edge_ops, face_ops, FaceId, HalfEdgeMesh, StackVec, VertexId};
 
-pub fn transform(mesh:&mut HalfEdgeMesh, vertex:VertexId, transform:Transform) {
-    let positions = mesh.attributes.get_mut(&super::attributes::AttributeKind::Positions).unwrap().as_vertices_vec3_mut();
+pub fn transform(mesh: &mut HalfEdgeMesh, vertex: VertexId, transform: Transform) {
+    let positions = mesh
+        .attributes
+        .get_mut(&super::attributes::AttributeKind::Positions)
+        .unwrap()
+        .as_vertices_vec3_mut();
     positions.insert(vertex, transform.transform_point(positions[vertex]));
 }
 
 /// Removes a vertex, either making a mesh boundary, or filling it up with a new face
-pub fn delete(mesh:&mut HalfEdgeMesh, vertex:VertexId, is_fill:bool) -> StackVec<Option<FaceId>> {
-    let fan:StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| *t).collect();
-    let result = fan.iter().map(|&edge| edge_ops::delete(mesh, edge, is_fill)).collect();
+pub fn delete(
+    mesh: &mut HalfEdgeMesh,
+    vertex: VertexId,
+    is_fill: bool,
+) -> StackVec<Option<FaceId>> {
+    let fan: StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| *t).collect();
+    let result = fan
+        .iter()
+        .map(|&edge| edge_ops::delete(mesh, edge, is_fill))
+        .collect();
     mesh.vertices.remove(vertex);
     result
 }
 
 /// Chamfers a vertex by stitching a face from mid-points of the vertex's outgoing edges. Returns newly-created FaceId
-pub fn chamfer(mesh:&mut HalfEdgeMesh, vertex:VertexId, factor:f32) -> FaceId {
+pub fn chamfer(mesh: &mut HalfEdgeMesh, vertex: VertexId, factor: f32) -> FaceId {
     // Find outgoing edges
-    let outgoing:StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| *t).collect();
+    let outgoing: StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| *t).collect();
     // Split each edge into two, returning new vertices as an array
-    let new_vertices:StackVec<_> = outgoing.iter().map(|&target| edge_ops::split(mesh, target, factor)).collect();
+    let new_vertices: StackVec<_> = outgoing
+        .iter()
+        .map(|&target| edge_ops::split(mesh, target, factor))
+        .collect();
     // Connect pairs of vertices together to form new edges
-    let new_edges:StackVec<_> = new_vertices.iter().circular_tuple_windows().map(|(&start, &end)| face_ops::split(mesh, start, end)).collect();
+    let new_edges: StackVec<_> = new_vertices
+        .iter()
+        .circular_tuple_windows()
+        .map(|(&start, &end)| face_ops::split(mesh, start, end))
+        .collect();
     // Delete the original vertex, filling its hole with a face
     delete(mesh, vertex, true);
     mesh[mesh[new_edges[0]].twin].face.unwrap()
@@ -32,13 +49,21 @@ pub fn chamfer(mesh:&mut HalfEdgeMesh, vertex:VertexId, factor:f32) -> FaceId {
 
 /// Delete this vertex only if it lies within two faces (has two outbound half-edges)
 /// Merge the half-edges together in a continous line, reducing the edge count for contained faces.
-pub fn dissolve(mesh:&mut HalfEdgeMesh, vertex:VertexId) {
-    let outgoing = mesh.goto(vertex).iter_outgoing().map(|e| (*e, *e.twin(), e.face())).collect::<StackVec<_>>();
+pub fn dissolve(mesh: &mut HalfEdgeMesh, vertex: VertexId) {
+    let outgoing = mesh
+        .goto(vertex)
+        .iter_outgoing()
+        .map(|e| (*e, *e.twin(), e.face()))
+        .collect::<StackVec<_>>();
     if outgoing.len() != 2 {
         panic!("Tried to dissolve a vertex that deson't connect only 2 edges");
     }
     // outgoing[n].0 is outgoing and outgoing[n].1 is incoming
-    let direction = if mesh[outgoing[0].1].next == outgoing[1].0 { 0 } else { 1 };
+    let direction = if mesh[outgoing[0].1].next == outgoing[1].0 {
+        0
+    } else {
+        1
+    };
     mesh[outgoing[direction].1].next = mesh[outgoing[(direction + 1) % 2].0].next; // incoming.next is now whatever outgoing.next was pointing to
     mesh[outgoing[direction].1].next = mesh[outgoing[(direction + 1) % 2].0].next;
     mesh[outgoing[(direction + 1) % 2].1].next = mesh[outgoing[direction].0].next;
@@ -53,7 +78,6 @@ pub fn dissolve(mesh:&mut HalfEdgeMesh, vertex:VertexId) {
     mesh.halfedges.remove(outgoing[1].0);
     // TODO: Figure out how to clean vertex attributes in a nice way
     mesh.vertices.remove(vertex);
-
 }
 
 #[cfg(test)]
@@ -63,7 +87,6 @@ mod tests {
     use smallvec::SmallVec;
 
     use crate::mesh::{attributes::AttributeKind, tests::sample_mesh, FaceId, VertexId};
-
 
     #[test]
     fn test_delete() {
@@ -83,12 +106,18 @@ mod tests {
     #[test]
     fn test_chamfer() {
         let mut mesh = sample_mesh();
-        let v = mesh.vertex_keys().collect::<SmallVec<[_;9]>>();
+        let v = mesh.vertex_keys().collect::<SmallVec<[_; 9]>>();
         // Pyramid shape with v[2] on top
         let positions = SecondaryMap::from_iter([
-            (v[0], -Vec3::X-Vec3::Z), (v[3], -Vec3::Z+0.5*Vec3::Y), (v[5], Vec3::X-Vec3::Z),
-            (v[1], -Vec3::X+0.5*Vec3::Y), (v[2], Vec3::Y), (v[4], Vec3::X+0.5*Vec3::Y),
-            (v[6], -Vec3::X+Vec3::Z), (v[7], Vec3::Z+0.5*Vec3::Y), (v[8], Vec3::X+Vec3::Z),
+            (v[0], -Vec3::X - Vec3::Z),
+            (v[3], -Vec3::Z + 0.5 * Vec3::Y),
+            (v[5], Vec3::X - Vec3::Z),
+            (v[1], -Vec3::X + 0.5 * Vec3::Y),
+            (v[2], Vec3::Y),
+            (v[4], Vec3::X + 0.5 * Vec3::Y),
+            (v[6], -Vec3::X + Vec3::Z),
+            (v[7], Vec3::Z + 0.5 * Vec3::Y),
+            (v[8], Vec3::X + Vec3::Z),
         ]);
         mesh.add_attribute(AttributeKind::Positions, positions);
         let new_face = super::chamfer(&mut mesh, v[2], 0.25);
@@ -98,7 +127,10 @@ mod tests {
         assert_eq!(mesh.count_islands(), 1);
         assert_eq!(mesh.count_face_edges(), 24);
         assert_eq!(new_face, FaceId(KeyData::from_ffi(8)));
-        let positions = mesh.attribute(&AttributeKind::Positions).unwrap().as_vertices_vec3();
+        let positions = mesh
+            .attribute(&AttributeKind::Positions)
+            .unwrap()
+            .as_vertices_vec3();
         for vertex in mesh.vertex_keys() {
             assert!(positions.contains_key(vertex))
         }
