@@ -22,7 +22,6 @@ lto = "thin"
 [profile.dev.package."*"]
 opt-level = 3
 
-
 [dependencies]
 bevy = "0.14.2"
 earcutr = "0.4.3"

@@ -1,7 +1,13 @@
 //! A simple 3D scene with light shining over a cube sitting on a plane.
 
-use bevy::{pbr::{wireframe::{Wireframe, WireframePlugin}}, prelude::*};
-use bevy_copperfield::{mesh::{edge_ops, vertex_ops}, mesh_builders::HalfEdgeMeshBuilder};
+use bevy::{
+    pbr::wireframe::{Wireframe, WireframePlugin},
+    prelude::*,
+};
+use bevy_copperfield::{
+    mesh::{edge_ops, vertex_ops},
+    mesh_builders::HalfEdgeMeshBuilder,
+};
 // use bevy_copperfield::{mesh::{vertex_ops::chamfer, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
 
 fn main() {
@@ -34,12 +40,15 @@ fn setup(
     // chamfer(&mut cube, vertex, 0.1).unwrap();
     // let other_vertex = cube.goto(Vec3{x:-0.5, y:0.5, z:0.5}).get_vertex().unwrap();
     // chamfer(&mut cube, other_vertex, 0.3).unwrap();
-    commands.spawn((Wireframe, PbrBundle {
-        mesh: meshes.add(&cube),
-        material: materials.add(Color::srgb_u8(124, 144, 255)),
-        transform: Transform::from_xyz(0.0, 0.5, 0.0),
-        ..default()
-    }));
+    commands.spawn((
+        Wireframe,
+        PbrBundle {
+            mesh: meshes.add(&cube),
+            material: materials.add(Color::srgb_u8(124, 144, 255)),
+            transform: Transform::from_xyz(0.0, 0.5, 0.0),
+            ..default()
+        },
+    ));
     // light
     commands.spawn(PointLightBundle {
         point_light: PointLight {
@@ -56,9 +65,9 @@ fn setup(
     });
 }
 
-fn update(time:Res<Time>, mut camera:Query<&mut Transform, With<Camera>>) {
+fn update(time: Res<Time>, mut camera: Query<&mut Transform, With<Camera>>) {
     let (x, z) = time.elapsed_seconds().sin_cos();
-    let pos = Vec3{x, y:0.45, z}*10.0;
+    let pos = Vec3 { x, y: 0.45, z } * 10.0;
     let mut transform = camera.single_mut();
     transform.translation = pos;
     transform.look_at(Vec3::ZERO, Vec3::Y);

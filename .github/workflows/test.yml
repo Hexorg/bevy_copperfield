@@ -1,0 +1,19 @@
+---
+name: Test
+on:
+    pull_request:
+        types: [
+            opened,
+            edited,
+            synchronize,
+            reopened
+        ]
+jobs:
+    test_bevy_copperfield:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - uses: actions-rust-lang/setup-rust-toolchain@v1
+            with:
+                toolchain: nightly
+          - run: cargo test --release --all-features

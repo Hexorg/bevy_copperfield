@@ -1,14 +1,13 @@
-use bevy::utils::{hashbrown::{hash_set::Iter, HashSet}};
+use bevy::utils::hashbrown::{hash_set::Iter, HashSet};
 
 use super::{traversal::Traversal, FaceId, HalfEdgeId, HalfEdgeMesh, MeshPosition, VertexId};
 
-
 #[derive(Clone, PartialEq, Eq)]
-/// A mononotous selection on a mesh, several edges, vertices, or faces, but not a mix. 
-pub enum MeshSelection{
+/// A mononotous selection on a mesh, several edges, vertices, or faces, but not a mix.
+pub enum MeshSelection {
     Vertices(HashSet<VertexId>),
     HalfEdges(HashSet<HalfEdgeId>),
-    Faces(HashSet<FaceId>)
+    Faces(HashSet<FaceId>),
 }
 
 impl MeshSelection {
@@ -26,7 +25,7 @@ impl MeshSelection {
 /// to act differently based on if they are applied to one item or multiple.
 pub struct Selection<'m> {
     mesh: &'m HalfEdgeMesh,
-    selection:MeshSelection,
+    selection: MeshSelection,
 }
 
 impl From<MeshPosition> for MeshSelection {
@@ -39,28 +38,30 @@ impl From<MeshPosition> for MeshSelection {
     }
 }
 
-enum SelectionIteratorKeys<'m>{
+enum SelectionIteratorKeys<'m> {
     Vertices(Iter<'m, VertexId>),
     Edges(Iter<'m, HalfEdgeId>),
-    Faces(Iter<'m, FaceId>)
+    Faces(Iter<'m, FaceId>),
 }
 
-pub struct SelectionIterator<'m>{
+pub struct SelectionIterator<'m> {
     mesh: &'m HalfEdgeMesh,
-    selection:SelectionIteratorKeys<'m>,
+    selection: SelectionIteratorKeys<'m>,
     // selection_index:usize
 }
 
-
 impl<'m> Selection<'m> {
-    pub(crate) fn new(mesh:&'m HalfEdgeMesh, position:MeshPosition) -> Self {
-        Self{mesh, selection:position.into()}
+    pub(crate) fn new(mesh: &'m HalfEdgeMesh, position: MeshPosition) -> Self {
+        Self {
+            mesh,
+            selection: position.into(),
+        }
     }
     pub fn build(self) -> MeshSelection {
         self.selection
     }
 
-    pub fn append(&mut self, halfedge:HalfEdgeId) -> bool {
+    pub fn append(&mut self, halfedge: HalfEdgeId) -> bool {
         match &mut self.selection {
             MeshSelection::Vertices(vec) => vec.insert(self.mesh[halfedge].vertex),
             MeshSelection::HalfEdges(vec) => vec.insert(halfedge),
@@ -74,35 +75,76 @@ impl<'m> Selection<'m> {
             MeshSelection::HalfEdges(hash_set) => SelectionIteratorKeys::Edges(hash_set.iter()),
             MeshSelection::Faces(hash_set) => SelectionIteratorKeys::Faces(hash_set.iter()),
         };
-        SelectionIterator { mesh: self.mesh, selection}
+        SelectionIterator {
+            mesh: self.mesh,
+            selection,
+        }
     }
 
     pub fn to_vertex_selection(self) -> Self {
         let selection = match &self.selection {
             MeshSelection::Vertices(_) => return self,
-            MeshSelection::HalfEdges(vec) => MeshSelection::Vertices(vec.iter().map(|e| self.mesh.goto(*e).vertex()).collect::<HashSet<_>>()),
-            MeshSelection::Faces(vec) => MeshSelection::Vertices(vec.iter().flat_map(|f| self.mesh.goto(*f).iter_loop().map(|t| t.vertex())).collect::<HashSet<_>>()),
+            MeshSelection::HalfEdges(vec) => MeshSelection::Vertices(
+                vec.iter()
+                    .map(|e| self.mesh.goto(*e).vertex())
+                    .collect::<HashSet<_>>(),
+            ),
+            MeshSelection::Faces(vec) => MeshSelection::Vertices(
+                vec.iter()
+                    .flat_map(|f| self.mesh.goto(*f).iter_loop().map(|t| t.vertex()))
+                    .collect::<HashSet<_>>(),
+            ),
         };
-        Selection { mesh: self.mesh, selection }
+        Selection {
+            mesh: self.mesh,
+            selection,
+        }
     }
 
     pub fn to_edge_selection(self) -> Self {
         let selection = match &self.selection {
-            MeshSelection::Vertices(vec) => MeshSelection::HalfEdges(vec.iter().map(|&v| self.mesh[v].halfedge).collect::<HashSet<_>>()),
+            MeshSelection::Vertices(vec) => MeshSelection::HalfEdges(
+                vec.iter()
+                    .map(|&v| self.mesh[v].halfedge)
+                    .collect::<HashSet<_>>(),
+            ),
             MeshSelection::HalfEdges(_) => return self,
-            MeshSelection::Faces(vec) => MeshSelection::HalfEdges(vec.iter().flat_map(|&f| self.mesh.goto(f).iter_loop().map(|t| *t)).collect::<HashSet<_>>()),
+            MeshSelection::Faces(vec) => MeshSelection::HalfEdges(
+                vec.iter()
+                    .flat_map(|&f| self.mesh.goto(f).iter_loop().map(|t| *t))
+                    .collect::<HashSet<_>>(),
+            ),
         };
-        Selection { mesh: self.mesh, selection }
+        Selection {
+            mesh: self.mesh,
+            selection,
+        }
     }
 
     /// Selects adjacent faces of vertices and exact faces of halfedges
     pub fn to_face_selection(self) -> Self {
         let selection = match &self.selection {
-            MeshSelection::Vertices(vec) => MeshSelection::Faces(vec.iter().flat_map(|&v| self.mesh.goto(v).adjacent_faces().map(|t| t.face().unwrap())).collect::<HashSet<_>>()),
-            MeshSelection::HalfEdges(vec) => MeshSelection::Faces(vec.iter().map(|&e| self.mesh[e].face.unwrap()).collect::<HashSet<_>>()),
+            MeshSelection::Vertices(vec) => MeshSelection::Faces(
+                vec.iter()
+                    .flat_map(|&v| {
+                        self.mesh
+                            .goto(v)
+                            .adjacent_faces()
+                            .map(|t| t.face().unwrap())
+                    })
+                    .collect::<HashSet<_>>(),
+            ),
+            MeshSelection::HalfEdges(vec) => MeshSelection::Faces(
+                vec.iter()
+                    .map(|&e| self.mesh[e].face.unwrap())
+                    .collect::<HashSet<_>>(),
+            ),
             MeshSelection::Faces(_) => return self,
         };
-        Selection { mesh: self.mesh, selection }
+        Selection {
+            mesh: self.mesh,
+            selection,
+        }
     }
 }
 
