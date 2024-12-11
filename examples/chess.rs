@@ -224,9 +224,9 @@ fn add_pawn_top(mesh: &mut HalfEdgeMesh, top_face: FaceId) {
         mesh,
         top_face,
         Transform::from_scale(Vec3 {
-            x: 0.1,
+            x: 0.5,
             y: 1.0,
-            z: 0.1,
+            z: 0.5,
         }),
     );
 }
@@ -264,6 +264,7 @@ fn setup(
     // chamfer(&mut cube, vertex, 0.1).unwrap();
     // let other_vertex = cube.goto(Vec3{x:-0.5, y:0.5, z:0.5}).get_vertex().unwrap();
     // chamfer(&mut cube, other_vertex, 0.3).unwrap();
+    pawn.calculate_uvs();
     commands.spawn((
         Pawn,
         PbrBundle {
@@ -298,6 +299,7 @@ fn update(
     let count = (4.0 + 6.0 * time.elapsed_seconds().sin().abs()).ceil() as usize;
     let (mut mesh, top_face) = make_base(2.75, count);
     add_pawn_top(&mut mesh, top_face);
+    mesh.calculate_uvs();
     if let Some(pawn) = meshes.get_mut(pawn.single()) {
         *pawn = (&mesh).into()
     }

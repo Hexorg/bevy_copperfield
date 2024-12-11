@@ -5,7 +5,7 @@ use core::f32;
 use bevy::{color, prelude::*};
 use bevy_copperfield::{
     mesh::{face_ops, mesh_ops, HalfEdgeMesh},
-    mesh_builders::HalfEdgeMeshBuilder,
+    mesh_builders::HalfEdgeMeshBuilder, uvmesh::ProjectionMethod,
 };
 use noise::{NoiseFn, Simplex};
 // use bevy_copperfield::{mesh::{vertex_ops::chamfer, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
@@ -71,6 +71,8 @@ fn make_fence(length: f32) -> HalfEdgeMesh {
         let new_stick = make_stick(2.0, Transform::from_translation(pos * Vec3::X));
         mesh.join(&new_stick);
     }
+    mesh.uv_projection = ProjectionMethod::Cube { center: 1.5*Vec3::Y, scale: Vec3{x:length, y:3., z:0.1} };
+    mesh.calculate_uvs();
     println!("Face count: {}", mesh.face_count());
     mesh
 }
@@ -102,7 +104,7 @@ fn setup(
 
     commands.spawn(PbrBundle {
         mesh: meshes.add(&make_fence(8.0)),
-        material: assets.load("bark.jpg"),
+        material: materials.add(StandardMaterial{base_color_texture:Some(assets.load("bark.jpg")),..default()}),
         transform: Transform::from_xyz(-4.0, 0.0, 0.0),
         ..default()
     });

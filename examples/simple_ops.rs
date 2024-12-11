@@ -33,13 +33,13 @@ fn setup(
     });
     // cube
     let mut cube = Cuboid::new(1.0, 1.0, 1.0).procgen();
-
-    let edge = *cube.goto(Vec3::ONE);
-    let vertex = edge_ops::split(&mut cube, edge, 0.33);
+    cube.is_smooth = false;
+    let vertex = cube.goto(Vec3::ONE).vertex();
     vertex_ops::chamfer(&mut cube, vertex, 0.25);
     // chamfer(&mut cube, vertex, 0.1).unwrap();
     // let other_vertex = cube.goto(Vec3{x:-0.5, y:0.5, z:0.5}).get_vertex().unwrap();
     // chamfer(&mut cube, other_vertex, 0.3).unwrap();
+    cube.calculate_uvs();
     commands.spawn((
         Wireframe,
         PbrBundle {

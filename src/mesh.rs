@@ -563,8 +563,6 @@ impl HalfEdgeMesh {
                 primitive_mapping::sphere(self, center, radius)
             }
         }
-        // primitive_mapping::cube(self, Transform::from_translation(Vec3::Y+0.5*Vec3::Z).with_scale(Vec3{x:1.0, y:3.0, z:2.0}));
-
         let values = self
             .attribute(&AttributeKind::UVs)
             .expect("Vertices don't have UV attribute.")
