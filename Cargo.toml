@@ -23,7 +23,7 @@ lto = "thin"
 opt-level = 3
 
 [dependencies]
-bevy = {version ="0.14.2", features=["jpeg"]}
+bevy = {version ="0.15.0", features=["jpeg"]}
 earcutr = "0.4.3"
 itertools = "0.13.0"
 line_drawing = "1.0.0"
