@@ -1,4 +1,4 @@
-use bevy::prelude::Transform;
+use bevy_transform::components::Transform;
 use itertools::Itertools;
 
 use super::{edge_ops, face_ops, FaceId, HalfEdgeMesh, StackVec, VertexId};
@@ -18,7 +18,7 @@ pub fn delete(
     vertex: VertexId,
     is_fill: bool,
 ) -> StackVec<Option<FaceId>> {
-    let fan: StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| *t).collect();
+    let fan: StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| t.halfedge()).collect();
     let result = fan
         .iter()
         .map(|&edge| edge_ops::delete(mesh, edge, is_fill))
@@ -30,7 +30,7 @@ pub fn delete(
 /// Chamfers a vertex by stitching a face from mid-points of the vertex's outgoing edges. Returns newly-created FaceId
 pub fn chamfer(mesh: &mut HalfEdgeMesh, vertex: VertexId, factor: f32) -> FaceId {
     // Find outgoing edges
-    let outgoing: StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| *t).collect();
+    let outgoing: StackVec<_> = mesh.goto(vertex).iter_outgoing().map(|t| t.halfedge()).collect();
     // Split each edge into two, returning new vertices as an array
     let new_vertices: StackVec<_> = outgoing
         .iter()
@@ -53,7 +53,7 @@ pub fn dissolve(mesh: &mut HalfEdgeMesh, vertex: VertexId) {
     let outgoing = mesh
         .goto(vertex)
         .iter_outgoing()
-        .map(|e| (*e, *e.twin(), e.face()))
+        .map(|e| (e.halfedge(), e.twin().halfedge(), e.face()))
         .collect::<StackVec<_>>();
     if outgoing.len() != 2 {
         panic!("Tried to dissolve a vertex that deson't connect only 2 edges");
@@ -82,7 +82,7 @@ pub fn dissolve(mesh: &mut HalfEdgeMesh, vertex: VertexId) {
 
 #[cfg(test)]
 mod tests {
-    use bevy::prelude::Vec3;
+    use glam::Vec3;
     use slotmap::{KeyData, SecondaryMap};
     use smallvec::SmallVec;
 

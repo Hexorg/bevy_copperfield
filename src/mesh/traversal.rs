@@ -1,4 +1,3 @@
-use bevy::prelude::{default, Deref, DerefMut};
 
 use super::{
     selection::Selection, FaceId, HalfEdgeId, HalfEdgeMesh, MeshPosition, StackVec, VertexId,
@@ -6,11 +5,10 @@ use super::{
 
 const TRAVERSAL_LOOP_LIMIT: usize = 32; // We really don't expect more than TRAVERSAL_LOOP_LIMIT-gons or more than TRAVERSAL_LOOP_LIMIT edges coming out of a vertex
 
-#[derive(Clone, Copy, Deref, DerefMut)]
+#[derive(Clone, Copy)]
 /// Collection of convenience methods to traverse the mesh.
 /// Has paniking and non-paniking methods for checking mesh state.
 pub struct Traversal<'m> {
-    #[deref]
     position: HalfEdgeId,
     pub(crate) mesh: &'m HalfEdgeMesh,
 }
@@ -32,9 +30,9 @@ pub struct VertexFlow {
 impl VertexFlow {
     pub fn new(vertex: VertexId) -> Self {
         VertexFlow {
-            incoming: default(),
+            incoming: HalfEdgeId::default(),
             vertex,
-            outgoing: default(),
+            outgoing: HalfEdgeId::default(),
         }
     }
 }
@@ -42,11 +40,11 @@ impl VertexFlow {
 impl std::fmt::Debug for VertexFlow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut output = f.debug_struct("");
-        if self.incoming != default() {
+        if self.incoming != HalfEdgeId::default() {
             output.field("incoming", &self.incoming);
         }
         output.field("vertex", &self.vertex);
-        if self.outgoing != default() {
+        if self.outgoing != HalfEdgeId::default() {
             output.field("outgoing", &self.outgoing);
         }
         output.finish()
@@ -69,8 +67,8 @@ impl<'m> EdgeIterator<'m> {
     pub fn contains(mut self, pos: impl Into<MeshPosition> + Copy) -> bool {
         use MeshPosition::*;
         self.any(|edge| match pos.into() {
-            Vertex(v) => edge.vertex() == v || edge.mesh[v].halfedge == *edge,
-            HalfEdge(e2) => *edge == e2,
+            Vertex(v) => edge.vertex() == v || edge.mesh[v].halfedge == edge.halfedge(),
+            HalfEdge(e2) => edge.halfedge() == e2,
             Face(f) => edge.face() == Some(f),
         })
     }
@@ -233,7 +231,7 @@ impl<'m> Traversal<'m> {
     /// // Get position
     /// let some_position = mesh.edge_keys().next().unwrap();
     /// let traversal = mesh.goto(some_position);
-    /// assert_eq!(traversal.halfedge(), *traversal);
+    /// assert_eq!(some_position, traversal.halfedge());
     /// ```
     pub fn halfedge(&self) -> HalfEdgeId {
         self.position
@@ -257,12 +255,12 @@ impl<'m> Traversal<'m> {
     /// HalfEdgeMesh assumes `HalfEdgeId::default()` is equivalent to a NULL pointer
     pub fn get_flow(self, face: Option<FaceId>) -> StackVec<VertexFlow> {
         let mut result:StackVec<_> = self.iter_incoming().filter_map(|incoming| if incoming.face() == face {
-            let outgoing = incoming.try_next().map(|t| if t.face() == face { *t } else { 
+            let outgoing = incoming.try_next().map(|t| if t.face() == face { t.halfedge() } else { 
                 self.mesh.print_mesh();
                 panic!("Outgoing edge {t:?} has different face {:?} from incoming edge {incoming:?} face {:?}. Mesh is malformed", t.face(), incoming.face());
-             }).unwrap_or_else(|| if face.is_none() { *incoming.twin() } else { default()});
+             }).unwrap_or_else(|| if face.is_none() { incoming.twin().halfedge() } else { HalfEdgeId::default()});
             let vertex = incoming.twin().vertex();
-                Some(VertexFlow { incoming: *incoming, vertex, outgoing })
+                Some(VertexFlow { incoming: incoming.halfedge(), vertex, outgoing })
             } else {
                 None
             }
@@ -273,9 +271,9 @@ impl<'m> Traversal<'m> {
                 .filter_map(|outgoing| {
                     if outgoing.face() == face {
                         Some(VertexFlow {
-                            incoming: default(),
+                            incoming: HalfEdgeId::default(),
                             vertex: outgoing.vertex(),
-                            outgoing: *outgoing,
+                            outgoing: outgoing.halfedge(),
                         })
                     } else {
                         None
@@ -303,7 +301,7 @@ impl<'m> Traversal<'m> {
     /// Traverse to the next half-edge or to its twin if the next pointer is invalid (happens during first face construction)
     pub fn next_or_twin(mut self) -> Self {
         let next = self.mesh[self.position].next;
-        self.position = if next != default() {
+        self.position = if next != HalfEdgeId::default() {
             next
         } else {
             self.mesh[self.position].twin
@@ -350,7 +348,7 @@ impl<'m> Traversal<'m> {
 
     pub fn try_next(mut self) -> Option<Self> {
         let next = self.mesh[self.position].next;
-        if next != default() {
+        if next != HalfEdgeId::default() {
             self.position = next;
             Some(self)
         } else {
@@ -360,7 +358,7 @@ impl<'m> Traversal<'m> {
 
     pub fn try_twin(mut self) -> Option<Self> {
         let twin = self.mesh[self.position].twin;
-        if twin != default() {
+        if twin != HalfEdgeId::default() {
             self.position = twin;
             Some(self)
         } else {
@@ -377,29 +375,27 @@ impl<'m> std::fmt::Debug for Traversal<'m> {
 
 #[cfg(test)]
 mod tests {
-    use bevy::prelude::default;
     use slotmap::KeyData;
 
     use crate::mesh::{
-        traversal::{Traversal, VertexFlow},
-        HalfEdge, HalfEdgeId, HalfEdgeMesh, VertexId,
+        traversal::{Traversal, VertexFlow}, Face, HalfEdge, HalfEdgeId, HalfEdgeMesh, Vertex, VertexId
     };
 
     fn straight_line(count: usize, is_face: bool) -> HalfEdgeMesh {
         let mut mesh = HalfEdgeMesh::new();
-        let mut last_vertex = mesh.vertices.insert(default());
-        let mut last_edge = default();
-        let mut last_twin = default();
+        let mut last_vertex = mesh.vertices.insert(Vertex::default());
+        let mut last_edge = HalfEdgeId::default();
+        let mut last_twin = HalfEdgeId::default();
         let face = if is_face {
-            Some(mesh.faces.insert(default()))
+            Some(mesh.faces.insert(Face::default()))
         } else {
             None
         };
         for _ in 0..count {
-            let next_vertex = mesh.vertices.insert(default());
+            let next_vertex = mesh.vertices.insert(Vertex::default());
             let edge = mesh.halfedges.insert(HalfEdge {
-                twin: default(),
-                next: default(),
+                twin: HalfEdgeId::default(),
+                next: HalfEdgeId::default(),
                 vertex: last_vertex,
                 face,
             });
@@ -458,7 +454,7 @@ mod tests {
         assert_eq!(
             t[0],
             VertexFlow {
-                incoming: default(),
+                incoming: HalfEdgeId::default(),
                 vertex: VertexId(KeyData::from_ffi(3)),
                 outgoing: HalfEdgeId(KeyData::from_ffi(4))
             }

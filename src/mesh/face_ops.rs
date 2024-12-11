@@ -1,4 +1,4 @@
-use bevy::prelude::{default, Transform};
+use bevy_transform::components::Transform;
 use itertools::Itertools;
 
 use super::{
@@ -23,7 +23,7 @@ pub fn transform(mesh: &mut HalfEdgeMesh, face: FaceId, transform: Transform) {
 
 /// Removes a vertex, either making a mesh boundary, or filling it up with a new face
 pub fn delete(mesh: &mut HalfEdgeMesh, face: FaceId) {
-    let r#loop: StackVec<_> = mesh.goto(face).iter_loop().map(|t| *t).collect();
+    let r#loop: StackVec<_> = mesh.goto(face).iter_loop().map(|t| t.halfedge()).collect();
     for edge in r#loop {
         mesh[edge].face = None
     }
@@ -52,8 +52,7 @@ pub fn split(mesh: &mut HalfEdgeMesh, v: VertexId, w: VertexId) -> HalfEdgeId {
     let face = twin_next.face().unwrap();
     let edge_previous = twin_next.previous();
     let edge_next = twin_next.iter_loop().find(|t| t.vertex() == w).unwrap();
-    let edge_next = edge_next;
-    let (edge, mut twin) = mesh.attach_edge(*edge_previous, *edge_next);
+    let (edge, mut twin) = mesh.attach_edge(edge_previous.halfedge(), edge_next.halfedge());
 
     let face_id = mesh.faces.insert(Face { halfedge: twin });
 
@@ -76,7 +75,7 @@ pub fn extrude(mesh: &mut HalfEdgeMesh, face: FaceId, length: f32) -> StackVec<F
     let face_edges = mesh
         .goto(face)
         .iter_loop()
-        .map(|e| (*e, e.vertex(), *e.twin()))
+        .map(|e| (e.halfedge(), e.vertex(), e.twin().halfedge()))
         .collect::<StackVec<_>>();
     let is_origin_twin_boundary = mesh
         .goto(face)
@@ -88,7 +87,7 @@ pub fn extrude(mesh: &mut HalfEdgeMesh, face: FaceId, length: f32) -> StackVec<F
         // we will re-use the face_id to fill in the extruded face
         if is_origin_twin_boundary {
             // Pretend like outside edges have been filled with face to get face creation correct
-            mesh[edge.2].face = Some(default());
+            mesh[edge.2].face = Some(FaceId::default());
         }
     }
 
@@ -118,7 +117,7 @@ pub fn extrude(mesh: &mut HalfEdgeMesh, face: FaceId, length: f32) -> StackVec<F
         .find(|e| e.face().is_none())
         .unwrap()
         .iter_loop()
-        .map(|e| *e)
+        .map(|e| e.halfedge())
         .collect::<StackVec<_>>();
     mesh[face].halfedge = old_face_goes_here[0];
     for edge in old_face_goes_here {

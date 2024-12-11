@@ -1,4 +1,4 @@
-use bevy::utils::hashbrown::{hash_set::Iter, HashSet};
+use bevy_utils::hashbrown::{hash_set::Iter, HashSet};
 
 use super::{traversal::Traversal, FaceId, HalfEdgeId, HalfEdgeMesh, MeshPosition, VertexId};
 
@@ -81,7 +81,7 @@ impl<'m> Selection<'m> {
         }
     }
 
-    pub fn to_vertex_selection(self) -> Self {
+    pub fn select_vertices(self) -> Self {
         let selection = match &self.selection {
             MeshSelection::Vertices(_) => return self,
             MeshSelection::HalfEdges(vec) => MeshSelection::Vertices(
@@ -101,7 +101,7 @@ impl<'m> Selection<'m> {
         }
     }
 
-    pub fn to_edge_selection(self) -> Self {
+    pub fn select_edges(self) -> Self {
         let selection = match &self.selection {
             MeshSelection::Vertices(vec) => MeshSelection::HalfEdges(
                 vec.iter()
@@ -111,7 +111,7 @@ impl<'m> Selection<'m> {
             MeshSelection::HalfEdges(_) => return self,
             MeshSelection::Faces(vec) => MeshSelection::HalfEdges(
                 vec.iter()
-                    .flat_map(|&f| self.mesh.goto(f).iter_loop().map(|t| *t))
+                    .flat_map(|&f| self.mesh.goto(f).iter_loop().map(|t| t.halfedge()))
                     .collect::<HashSet<_>>(),
             ),
         };
@@ -122,7 +122,7 @@ impl<'m> Selection<'m> {
     }
 
     /// Selects adjacent faces of vertices and exact faces of halfedges
-    pub fn to_face_selection(self) -> Self {
+    pub fn select_faces(self) -> Self {
         let selection = match &self.selection {
             MeshSelection::Vertices(vec) => MeshSelection::Faces(
                 vec.iter()

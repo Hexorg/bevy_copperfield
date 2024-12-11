@@ -1,11 +1,12 @@
+use bevy_math::prelude::{Cuboid, Ellipse, RegularPolygon};
+use bevy_render::mesh::{CircleMeshBuilder, EllipseMeshBuilder, Meshable};
+use glam::{Vec2, Vec3};
+
 use crate::mesh::{
     attributes::{AttributeKind, AttributeStore},
     HalfEdgeId, HalfEdgeMesh, VertexId,
 };
-use bevy::{
-    prelude::{Cuboid, Ellipse, Meshable, RegularPolygon, Vec2, Vec3},
-    render::mesh::{CircleMeshBuilder, EllipseMeshBuilder},
-};
+
 
 /// A trait used for primitives toconstruct a [`HalfEdgeMesh`]
 pub trait HalfEdgeMeshBuilder {
@@ -17,7 +18,7 @@ impl HalfEdgeMeshBuilder for EllipseMeshBuilder {
     fn procgen(&self) -> HalfEdgeMesh {
         let mut mesh = HalfEdgeMesh::new();
         let mut position_attribute: AttributeStore<VertexId, Vec3> = AttributeStore::new();
-        let mut polygon = Vec::with_capacity(self.resolution);
+        let mut polygon = Vec::with_capacity(self.resolution as usize);
         // Add pi/2 so that there is a vertex at the top (sin is 1.0 and cos is 0.0)
         let start_angle = std::f32::consts::FRAC_PI_2;
         let step = std::f32::consts::TAU / self.resolution as f32;
@@ -94,7 +95,7 @@ impl HalfEdgeMeshBuilder for Cuboid {
                 .for_each(|(&idx, vertex)| _ = position_attribute.insert(vertex, positions[idx]));
             mesh.goto(face_id)
                 .iter_loop()
-                .for_each(|edge| _ = uv_attribute.insert(*edge, Vec2::ZERO));
+                .for_each(|edge| _ = uv_attribute.insert(edge.halfedge(), Vec2::ZERO));
         }
         mesh.add_attribute(AttributeKind::Positions, position_attribute);
         mesh.add_attribute(AttributeKind::UVs, uv_attribute);
@@ -104,8 +105,7 @@ impl HalfEdgeMeshBuilder for Cuboid {
 
 #[cfg(test)]
 mod test {
-    use bevy::prelude::Cuboid;
-
+    use bevy_math::prelude::Cuboid;
     use smallvec::SmallVec;
 
     use crate::{mesh::VertexId, mesh_builders::HalfEdgeMeshBuilder};

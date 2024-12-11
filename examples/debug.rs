@@ -1,14 +1,7 @@
 use core::f32;
 
 use bevy::{
-    color,
-    prelude::*,
-    render::{
-        camera::ScalingMode,
-        texture::{ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor},
-        view::screenshot::ScreenshotManager,
-    },
-    window::PrimaryWindow,
+    color, image::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor}, prelude::*, render::view::screenshot::{save_to_disk, Screenshot}
 };
 use bevy_copperfield::{
     mesh::{
@@ -97,7 +90,6 @@ pub mod camera_controls {
     use bevy::{
         input::mouse::{MouseMotion, MouseWheel},
         prelude::*,
-        render::camera::ScalingMode,
         window::{CursorGrabMode, PrimaryWindow},
     };
 
@@ -112,8 +104,8 @@ pub mod camera_controls {
         mut motion_events: ResMut<Events<MouseMotion>>,
     ) {
         let mut primary_window = q_windows.single_mut();
-        primary_window.cursor.grab_mode = CursorGrabMode::Locked;
-        primary_window.cursor.visible = false;
+        primary_window.cursor_options.grab_mode = CursorGrabMode::Locked;
+        primary_window.cursor_options.visible = false;
         motion_events.clear();
     }
 
@@ -148,7 +140,7 @@ pub mod camera_controls {
                     };
                 match p {
                     Projection::Orthographic(orthographic_projection) => {
-                        orthographic_projection.scale += change_value
+                        orthographic_projection.scale += 0.01*change_value
                     }
                     Projection::Perspective(perspective_projection) => {
                         perspective_projection.fov += change_value
@@ -158,10 +150,7 @@ pub mod camera_controls {
             if change_projection {
                 match p {
                     Projection::Perspective(_) => {
-                        *p = Projection::Orthographic(OrthographicProjection {
-                            scaling_mode: ScalingMode::WindowSize(300.0),
-                            ..default()
-                        })
+                        *p = Projection::Orthographic(OrthographicProjection{scale:0.005, ..OrthographicProjection::default_3d()})
                     }
                     Projection::Orthographic(_) => *p = Projection::Perspective(default()),
                 }
@@ -214,7 +203,7 @@ pub mod camera_controls {
                 shift += Vec3::Y;
             }
             if shift != Vec3::ZERO {
-                transform.translation += time.delta_seconds() * CAMERA_SPEED * shift;
+                transform.translation += time.delta_secs() * CAMERA_SPEED * shift;
             }
             if zero {
                 transform.translation = 3.0 * Vec3::Y;
@@ -250,12 +239,12 @@ pub enum GizmoState {
     LinesAndLabels,
 }
 
-#[derive(States, Debug, Hash, Default, PartialEq, Eq, Clone, Copy)]
-pub enum ScreenshotState {
-    #[default]
-    NotTakingScreenshot,
-    ReadyForScreenshot,
-}
+// #[derive(States, Debug, Hash, Default, PartialEq, Eq, Clone, Copy)]
+// pub enum ScreenshotState {
+//     #[default]
+//     NotTakingScreenshot,
+//     ReadyForScreenshot,
+// }
 /// set up a simple 3D scene
 fn setup(
     debug_mesh: Res<DebugMesh>,
@@ -265,92 +254,52 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     assets: Res<AssetServer>,
 ) {
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(&debug_mesh.0)),
-        material: materials.add(StandardMaterial {
+    commands.spawn((
+        Mesh3d(meshes.add(Mesh::from(&debug_mesh.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
             base_color_texture: Some(assets.load_with_settings(
                 "uv.png",
                 |s: &mut ImageLoaderSettings| {
                     s.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-                        address_mode_u: bevy::render::texture::ImageAddressMode::Repeat,
-                        address_mode_v: bevy::render::texture::ImageAddressMode::Repeat,
+                        address_mode_u: ImageAddressMode::Repeat,
+                        address_mode_v: ImageAddressMode::Repeat,
                         ..default()
                     })
                 },
             )),
             ..default()
-        }),
-        transform: Transform::IDENTITY,
-        ..default()
-    });
+        })),
+    ));
     // light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
+    commands.spawn((
+        PointLight {
             shadows_enabled: true,
             ..default()
         },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..default()
-    });
+        Transform::from_xyz(4.0, 8.0, 4.0),
+    ));
     // camera
     commands.spawn((
         FlyingCamera {
             pitch: -0.5 * f32::consts::PI,
             yaw: 0.0,
         },
-        Camera3dBundle {
-            transform: Transform::from_xyz(0.0, 3.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
-            projection: Projection::Orthographic(OrthographicProjection {
-                scaling_mode: ScalingMode::WindowSize(300.0),
-                ..default()
-            }),
-            ..default()
-        },
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 3.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     commands.spawn((
         HelpText,
-        TextBundle {
-            text: Text::from_sections(vec![
-                TextSection {
-                    value: "Controls\n".into(),
-                    ..default()
-                },
-                TextSection {
-                    value: "W,A,S,D,Ctrl,Shift - move; Mouse movement - look around\n".into(),
-                    ..default()
-                },
-                TextSection {
-                    value: "Mouse wheel: Zoom\n".into(),
-                    ..default()
-                },
-                TextSection {
-                    value: "Escape: Exit\n".into(),
-                    ..default()
-                },
-                TextSection {
-                    value: "Digit 0: Reset view\n".into(),
-                    ..default()
-                },
-                TextSection {
-                    value: "Backslash: Toggle gizmo state\n".into(),
-                    ..default()
-                },
-                TextSection {
-                    value: "Tab: Toggle projection\n".into(),
-                    ..default()
-                },
-                TextSection {
-                    value: "Enter: Take Screenshot\n".into(),
-                    ..default()
-                },
-                TextSection {
-                    value: "Space: Apply Mesh mod function\n".into(),
-                    ..default()
-                },
-            ]),
-            ..default()
-        },
+        Text("Controls
+W,A,S,D,Ctrl,Shift - move; Mouse movement - look around
+Mouse wheel: Zoom
+Escape: Exit
+Digit 0: Reset view
+Backslash: Toggle gizmo state
+Tab: Toggle projection
+Enter: Take Screenshot
+Space: Apply Mesh mod function
+".to_owned())
     ));
 
     for chart in &charts.charts {
@@ -358,26 +307,15 @@ fn setup(
             for &face in &chart.faces {
                 commands.spawn((
                     HalfMeshLabelKey(face.into()),
-                    TextBundle {
-                        text: Text::from_section(
-                            String::from(&format!("{:?}", face)[6..]),
-                            TextStyle {
-                                color: FACE_COLOR.into(),
-                                ..default()
-                            },
-                        ),
-                        style: Style {
-                            position_type: PositionType::Absolute,
-                            ..default()
-                        },
-                        ..default()
-                    },
+                    Text(String::from(&format!("{:?}", face)[6..])),
+                    TextColor(FACE_COLOR.into()),
+                    Node{position_type:PositionType::Absolute,..default()},
                 ));
             }
         }
     }
     // for vertex in debug_mesh.vertex_keys().take(2) {
-    //     commands.spawn((HalfMeshLabelKey(vertex.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", vertex)[8..]), TextStyle {color: VERTEX_COLOR.into(), ..default() }), style:Style{position_type:PositionType::Absolute,..default()}, ..default()}));
+    //     commands.spawn((HalfMeshLabelKey(vertex.into()), TextBundle{text:Text::from_section(String::from(&format!("{:?}", vertex)[8..]), TextNode {color: VERTEX_COLOR.into(), ..default() }), Node:Node{position_type:PositionType::Absolute,..default()}, ..default()}));
     // }
 }
 
@@ -385,58 +323,25 @@ fn spawn_labels(debug_mesh: Res<DebugMesh>, mut commands: Commands) {
     for vertex in debug_mesh.vertex_keys() {
         commands.spawn((
             HalfMeshLabelKey(vertex.into()),
-            TextBundle {
-                text: Text::from_section(
-                    String::from(&format!("{:?}", vertex)[8..]),
-                    TextStyle {
-                        color: VERTEX_COLOR.into(),
-                        ..default()
-                    },
-                ),
-                style: Style {
-                    position_type: PositionType::Absolute,
-                    ..default()
-                },
-                ..default()
-            },
+            Text(String::from(&format!("{:?}", vertex)[8..])),
+            TextColor(VERTEX_COLOR.into()),
+            Node{position_type:PositionType::Absolute,..default()},
         ));
     }
     for edge in debug_mesh.edge_keys() {
         commands.spawn((
             HalfMeshLabelKey(edge.into()),
-            TextBundle {
-                text: Text::from_section(
-                    String::from(&format!("{:?}", edge)[10..]),
-                    TextStyle {
-                        color: EDGE_COLOR.into(),
-                        ..default()
-                    },
-                ),
-                style: Style {
-                    position_type: PositionType::Absolute,
-                    ..default()
-                },
-                ..default()
-            },
+            Text(String::from(&format!("{:?}", edge)[10..])),
+            TextColor(EDGE_COLOR.into()),
+            Node{position_type:PositionType::Absolute,..default()},
         ));
     }
     for face in debug_mesh.face_keys() {
         commands.spawn((
             HalfMeshLabelKey(face.into()),
-            TextBundle {
-                text: Text::from_section(
-                    String::from(&format!("{:?}", face)[6..]),
-                    TextStyle {
-                        color: FACE_COLOR.into(),
-                        ..default()
-                    },
-                ),
-                style: Style {
-                    position_type: PositionType::Absolute,
-                    ..default()
-                },
-                ..default()
-            },
+            Text(String::from(&format!("{:?}", face)[6..])),
+            TextColor(FACE_COLOR.into()),
+            Node{position_type:PositionType::Absolute,..default()},
         ));
     }
 }
@@ -464,7 +369,7 @@ fn draw_vertex_gizmos(mesh: Res<DebugMesh>, mut gizmos: Gizmos) {
         .as_vertices_vec3();
     for vertex in mesh.vertex_keys() {
         if let Some(&pos) = positions.get(vertex) {
-            gizmos.sphere(pos, Quat::IDENTITY, 0.01, VERTEX_COLOR);
+            gizmos.sphere(Isometry3d::from_translation(pos), 0.01, VERTEX_COLOR);
         }
     }
 }
@@ -488,9 +393,9 @@ fn get_edge_pos(edge: HalfEdgeId, mesh: &HalfEdgeMesh) -> (Vec3, Vec3) {
     let distance_to_end = distance_to_end.length();
     let shift = OFFSET
         * if edge.face().is_some() {
-            get_face_center_pos(*edge, mesh) - start + OFFSET * edge.calculate_normal().unwrap()
+            get_face_center_pos(edge.halfedge(), mesh) - start + OFFSET * edge.calculate_normal().unwrap()
         } else {
-            -(get_face_center_pos(*edge.twin(), mesh) - start)
+            -(get_face_center_pos(edge.twin().halfedge(), mesh) - start)
         };
     // let  end = start.lerp(to, LENGTH);
     (
@@ -524,7 +429,7 @@ fn draw_edge_gizmos(mesh: Res<DebugMesh>, mut gizmos: Gizmos) {
 }
 
 fn move_labels_to_with_camera(
-    mut transform: Query<(&mut Style, &HalfMeshLabelKey)>,
+    mut transform: Query<(&mut Node, &HalfMeshLabelKey)>,
     camera: Query<(&GlobalTransform, &Camera)>,
     mesh: Res<DebugMesh>,
 ) {
@@ -539,78 +444,65 @@ fn move_labels_to_with_camera(
                 .copied()
                 .unwrap_or_default(),
             MeshPosition::HalfEdge(half_edge_id) => get_edge_pos(half_edge_id, &mesh.0).1,
-            MeshPosition::Face(face_id) => get_face_center_pos(*mesh.goto(face_id), &mesh.0),
+            MeshPosition::Face(face_id) => get_face_center_pos(mesh.goto(face_id).halfedge(), &mesh.0),
         };
-        if let Some(viewport_pos) = camera.world_to_viewport(camera_transform, pos) {
+        if let Ok(viewport_pos) = camera.world_to_viewport(camera_transform, pos) {
             t.top = Val::Px(viewport_pos.y);
             t.left = Val::Px(viewport_pos.x);
         }
     }
 }
 
-fn take_screenshot(
-    main_window: Query<Entity, With<PrimaryWindow>>,
-    mut screenshot_manager: ResMut<ScreenshotManager>,
+fn screenshot_on_enter(
+    input: Res<ButtonInput<KeyCode>>,
     mesh: Res<DebugMesh>,
     texture: Res<Assets<Image>>,
     loader: Res<AssetServer>,
+    mut commands: Commands,
     mut counter: Local<u32>,
-    mut next_state: ResMut<NextState<ScreenshotState>>,
 ) {
-    let screnshot_path = format!("./debug_screenshot-{}.png", *counter);
-    let uv_path = format!("./uv-{}.png", *counter);
-    *counter += 1;
-    screenshot_manager
-        .save_screenshot_to_disk(main_window.single(), screnshot_path)
-        .unwrap();
-    let image = texture.get(&loader.load("uv.png")).unwrap().clone();
-    match image.try_into_dynamic() {
-        Ok(dyn_img) => {
-            // discard the alpha channel which stores brightness values when HDR is enabled to make sure
-            // the screenshot looks right
-            let mut img = dyn_img.to_rgb8();
-            let width = img.width();
-            let uvs = mesh.attribute(&AttributeKind::UVs).unwrap().as_edge_vec2();
-            for face in mesh.face_keys() {
-                let verts = mesh
-                    .goto(face)
-                    .iter_loop()
-                    .map(|p| uvs[*p])
-                    .collect::<StackVec<_>>();
-                for (&from, &to) in verts.iter().circular_tuple_windows() {
-                    let w = width as f32;
-                    let from = from * w; //(0.5 + 0.5*from)*w;
-                    let to = to * w; //(0.5 + 0.5*to)*w;
-                    let x1 = from.x as i32;
-                    let y1 = from.y as i32;
-                    let x2 = to.x as i32;
-                    let y2 = to.y as i32;
-                    for (x, y) in Bresenham::new((x1, y1), (x2, y2)) {
-                        if (x as u32) < width && (y as u32) < width {
-                            img.get_pixel_mut(x as u32, y as u32).0 = [0, 0, 0];
+    if input.just_pressed(KeyCode::Enter) {
+        let screnshot_path = format!("./debug_screenshot-{}.png", *counter);
+        let uv_path = format!("./uv-{}.png", *counter);
+        *counter += 1;
+        commands.spawn(Screenshot::primary_window()).observe(save_to_disk(screnshot_path));
+        let image = texture.get(&loader.load("uv.png")).unwrap().clone();
+        match image.try_into_dynamic() {
+            Ok(dyn_img) => {
+                // discard the alpha channel which stores brightness values when HDR is enabled to make sure
+                // the screenshot looks right
+                let mut img = dyn_img.to_rgb8();
+                let width = img.width();
+                let uvs = mesh.attribute(&AttributeKind::UVs).unwrap().as_edge_vec2();
+                for face in mesh.face_keys() {
+                    let verts = mesh
+                        .goto(face)
+                        .iter_loop()
+                        .map(|p| uvs[p.halfedge()])
+                        .collect::<StackVec<_>>();
+                    for (&from, &to) in verts.iter().circular_tuple_windows() {
+                        let w = width as f32;
+                        let from = from * w; //(0.5 + 0.5*from)*w;
+                        let to = to * w; //(0.5 + 0.5*to)*w;
+                        let x1 = from.x as i32;
+                        let y1 = from.y as i32;
+                        let x2 = to.x as i32;
+                        let y2 = to.y as i32;
+                        for (x, y) in Bresenham::new((x1, y1), (x2, y2)) {
+                            if (x as u32) < width && (y as u32) < width {
+                                img.get_pixel_mut(x as u32, y as u32).0 = [0, 0, 0];
+                            }
                         }
                     }
                 }
+                #[cfg(not(target_arch = "wasm32"))]
+                match img.save(&uv_path) {
+                    Ok(_) => info!("uv map saved to {}", uv_path),
+                    Err(e) => error!("Cannot save screenshot, IO error: {e}"),
+                }
             }
-            #[cfg(not(target_arch = "wasm32"))]
-            match img.save(&uv_path) {
-                Ok(_) => info!("uv map saved to {}", uv_path),
-                Err(e) => error!("Cannot save screenshot, IO error: {e}"),
-            }
+            Err(e) => error!("Cannot save uv map, requested format not recognized: {e}"),
         }
-        Err(e) => error!("Cannot save uv map, requested format not recognized: {e}"),
-    }
-    next_state.set(ScreenshotState::NotTakingScreenshot);
-}
-
-fn screenshot_on_enter(
-    input: Res<ButtonInput<KeyCode>>,
-    mut visibility: Query<&mut Visibility, With<HelpText>>,
-    mut next_state: ResMut<NextState<ScreenshotState>>,
-) {
-    if input.just_pressed(KeyCode::Enter) {
-        *visibility.single_mut() = Visibility::Hidden;
-        next_state.set(ScreenshotState::ReadyForScreenshot);
     }
 }
 
@@ -696,7 +588,7 @@ fn main() {
     app.insert_resource(DebugMesh(mesh))
         .insert_resource(Charts { charts })
         .init_state::<GizmoState>()
-        .init_state::<ScreenshotState>()
+        // .init_state::<ScreenshotState>()
         .add_systems(Startup, (setup, capture_mouse))
         .add_systems(
             Update,
@@ -712,18 +604,18 @@ fn main() {
             (draw_origin_gizmos, draw_vertex_gizmos, draw_edge_gizmos)
                 .run_if(not(in_state(GizmoState::NoGizmos))),
         )
-        .add_systems(
-            OnEnter(ScreenshotState::ReadyForScreenshot),
-            take_screenshot,
-        )
-        .add_systems(
-            OnEnter(ScreenshotState::NotTakingScreenshot),
-            |mut v: Query<&mut Visibility, With<HelpText>>| {
-                for mut v in &mut v {
-                    *v = Visibility::Inherited
-                }
-            },
-        )
+        // .add_systems(
+        //     OnEnter(ScreenshotState::ReadyForScreenshot),
+        //     take_screenshot,
+        // )
+        // .add_systems(
+        //     OnEnter(ScreenshotState::NotTakingScreenshot),
+        //     |mut v: Query<&mut Visibility, With<HelpText>>| {
+        //         for mut v in &mut v {
+        //             *v = Visibility::Inherited
+        //         }
+        //     },
+        // )
         .add_systems(OnEnter(GizmoState::LinesAndLabels), spawn_labels)
         .add_systems(OnExit(GizmoState::LinesAndLabels), despawn_labels)
         .run();

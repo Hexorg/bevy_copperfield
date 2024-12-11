@@ -9,7 +9,7 @@ use bevy_copperfield::{
     mesh_builders::HalfEdgeMeshBuilder,
 };
 
-fn make_base(diameter: f32, resolution: usize) -> (HalfEdgeMesh, FaceId) {
+fn make_base(diameter: f32, resolution: u32) -> (HalfEdgeMesh, FaceId) {
     // Shapes are generally x2 height of the diameter
     let mut mesh = Circle::new(0.5 * diameter)
         .mesh()
@@ -249,12 +249,11 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // circular base
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Circle::new(4.0)),
-        material: materials.add(Color::WHITE),
-        transform: Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-        ..default()
-    });
+    commands.spawn((
+        Mesh3d(meshes.add(Circle::new(4.0))),
+        MeshMaterial3d(materials.add(Color::WHITE)),
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+    ));
 
     let (mut pawn, top_face) = make_base(2.75, 5);
     add_pawn_top(&mut pawn, top_face);
@@ -267,43 +266,39 @@ fn setup(
     pawn.calculate_uvs();
     commands.spawn((
         Pawn,
-        PbrBundle {
-            mesh: meshes.add(&pawn),
-            material: materials.add(Color::srgb_u8(124, 144, 255)),
-            transform: Transform::from_xyz(0.0, 0.5, 0.0),
-            ..default()
-        },
+        Mesh3d(meshes.add(&pawn)),
+        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+        Transform::from_xyz(0.0, 0.5, 0.0)
     ));
     // light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
+    commands.spawn((
+        PointLight {
             shadows_enabled: true,
             ..default()
         },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..default()
-    });
+        Transform::from_xyz(4.0, 8.0, 4.0),
+    ));
     // camera
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(2.5, 4.5, 9.0).looking_at(Vec3::Y, Vec3::Y),
-        ..default()
-    });
+    commands.spawn((
+        Camera3d::default(),
+       Transform::from_xyz(2.5, 4.5, 9.0).looking_at(Vec3::Y, Vec3::Y)
+    ));
 }
 
 fn update(
     time: Res<Time>,
     mut camera: Query<&mut Transform, With<Camera>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    pawn: Query<&mut Handle<Mesh>, With<Pawn>>,
+    pawn: Query<&Mesh3d, With<Pawn>>,
 ) {
-    let count = (4.0 + 6.0 * time.elapsed_seconds().sin().abs()).ceil() as usize;
+    let count = (4.0 + 6.0 * time.elapsed_secs().sin().abs()).ceil() as u32;
     let (mut mesh, top_face) = make_base(2.75, count);
     add_pawn_top(&mut mesh, top_face);
     mesh.calculate_uvs();
     if let Some(pawn) = meshes.get_mut(pawn.single()) {
         *pawn = (&mesh).into()
     }
-    let (x, z) = (0.8 * time.elapsed_seconds()).sin_cos();
+    let (x, z) = (0.8 * time.elapsed_secs()).sin_cos();
     let pos = Vec3 { x, y: 0.45, z } * 10.0;
     let mut transform = camera.single_mut();
     transform.translation = pos;

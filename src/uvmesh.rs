@@ -1,9 +1,7 @@
 use std::collections::BinaryHeap;
 
-use bevy::{
-    prelude::{Vec2, Vec3},
-    utils::hashbrown::HashSet,
-};
+use glam::{Vec2, Vec3};
+use bevy_utils::hashbrown::HashSet;
 use itertools::Itertools;
 use slotmap::SecondaryMap;
 
@@ -134,7 +132,7 @@ pub fn create_charts(mesh: &mut HalfEdgeMesh) -> Vec<Chart> {
             for &edge in &feature {
                 uv_seams.insert(edge, true);
                 let edge = mesh.goto(edge);
-                uv_seams.insert(*edge.twin(), true);
+                uv_seams.insert(edge.twin().halfedge(), true);
                 if let Some(face) = edge.face() {
                     feature_faces.push(face);
                 }
@@ -142,8 +140,8 @@ pub fn create_charts(mesh: &mut HalfEdgeMesh) -> Vec<Chart> {
                     feature_faces.push(twin_face);
                 }
                 for edge in edge.iter_outgoing() {
-                    neighborhoods.insert(*edge);
-                    neighborhoods.insert(*edge.twin());
+                    neighborhoods.insert(edge.halfedge());
+                    neighborhoods.insert(edge.twin().halfedge());
                 }
             }
         }
@@ -153,7 +151,7 @@ pub fn create_charts(mesh: &mut HalfEdgeMesh) -> Vec<Chart> {
     let (charts, boundaries) = expand_charts(mesh, &maximas, &distances);
     let mut uv_seams: SecondaryMap<HalfEdgeId, bool> = SecondaryMap::new();
     for &edge in &boundaries {
-        let twin = *mesh.goto(edge).twin();
+        let twin = mesh.goto(edge).twin().halfedge();
         uv_seams.insert(edge, true);
         uv_seams.insert(twin, true);
     }
@@ -185,7 +183,7 @@ pub fn expand_feature_curve(
                 .unwrap_or(std::cmp::Ordering::Less)
         }) {
             let next_pos = next.position();
-            let next = *next;
+            let next = next.halfedge();
             if (start_pos - v_pos).length() < (start_pos - next_pos).length() && // no halfedge goes backwards relative to h'
                 string.len() <= MAX_STRING_LENGTH && // length of string is <= max_string_length
                 !neighborhood_edges.contains(&next)
@@ -209,7 +207,7 @@ pub fn expand_feature_curve(
     }
 
     let mut detected_feature: Vec<HalfEdgeId> = Vec::new();
-    let twin = *mesh.goto(start).twin();
+    let twin = mesh.goto(start).twin().halfedge();
     for edge in [start, twin] {
         let mut current = edge;
         let pos = mesh.goto(edge).position();
@@ -230,7 +228,7 @@ fn find_distance_to_features_with_dikstra(
     mesh: &HalfEdgeMesh,
     features: &[FaceId],
 ) -> (Vec<FaceId>, SecondaryMap<FaceId, usize>) {
-    #[derive(PartialOrd, Eq)]
+    #[derive(Eq)]
     struct FaceWithDistance {
         face: FaceId,
         distance: usize,
@@ -238,6 +236,11 @@ fn find_distance_to_features_with_dikstra(
     impl PartialEq for FaceWithDistance {
         fn eq(&self, other: &Self) -> bool {
             self.face == other.face
+        }
+    }
+    impl PartialOrd for FaceWithDistance {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
         }
     }
     impl Ord for FaceWithDistance {
@@ -330,7 +333,7 @@ fn expand_charts(
         charts.push(chart);
         for edge in mesh.goto(face).iter_loop() {
             heap.push(EdgeWithCost {
-                edge: *edge,
+                edge: edge.halfedge(),
                 cost: 0,
             });
         }
@@ -358,8 +361,8 @@ fn expand_charts(
                 && charts[face_opposite_chart_idx].max_distance - (distances[face] as i32)
                     < threshold
             {
-                chart_boundaries.remove(&(*edge));
-                chart_boundaries.remove(&(*twin));
+                chart_boundaries.remove(&edge.halfedge());
+                chart_boundaries.remove(&twin.halfedge());
                 // merge charts
                 let mut opposite_chart = charts.remove(face_opposite_chart_idx);
                 if face_opposite_chart_idx < face_chart_idx {
@@ -370,11 +373,11 @@ fn expand_charts(
                     .extend(opposite_chart.faces.drain());
             }
             if face_chart_idx == face_opposite_chart_idx {
-                chart_boundaries.remove(&(*edge));
-                chart_boundaries.remove(&(*twin));
+                chart_boundaries.remove(&edge.halfedge());
+                chart_boundaries.remove(&twin.halfedge());
             }
         } else {
-            chart_boundaries.remove(&(*edge));
+            chart_boundaries.remove(&edge.halfedge());
             charts[face_chart_idx].faces.insert(face_opposite);
             for edge in twin.iter_loop() {
                 // Find if other faces are in our chart. Those that are should be removed from chart_boundaries,
@@ -386,12 +389,12 @@ fn expand_charts(
                     .unwrap_or(true)
                 {
                     heap.push(EdgeWithCost {
-                        edge: *edge,
+                        edge: edge.halfedge(),
                         cost: distances[face_opposite],
                     });
                 } else {
-                    chart_boundaries.remove(&(*edge));
-                    chart_boundaries.remove(&(*edge.twin()));
+                    chart_boundaries.remove(&edge.halfedge());
+                    chart_boundaries.remove(&edge.twin().halfedge());
                 }
             }
         }

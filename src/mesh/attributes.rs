@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use bevy::prelude::{Mat3, Vec2, Vec3};
+use glam::{Mat3, Vec2, Vec3};
 use slotmap::SecondaryMap;
 
 use super::{selection::Selection, traversal::Traversal, HalfEdgeId, StackVec, VertexId};
@@ -190,7 +190,7 @@ impl<'m> TraversalQueries for Traversal<'m> {
             .mesh
             .attribute(&super::attributes::AttributeKind::UVs)
             .expect("Vertices don't have UV attribute.");
-        values.as_edge_vec2().get(**self).copied().unwrap()
+        values.as_edge_vec2().get(self.halfedge()).copied().unwrap()
     }
 
     fn is_smooth_normals(&self) -> bool {
@@ -213,7 +213,7 @@ impl<'m> TraversalQueries for Traversal<'m> {
             .mesh
             .attribute(&super::attributes::AttributeKind::UVSeams)
         {
-            store.as_edge_bool().get(**self).copied().unwrap_or(false)
+            store.as_edge_bool().get(self.halfedge()).copied().unwrap_or(false)
         } else {
             false
         }
@@ -404,7 +404,7 @@ impl<'m> SelectionQueries for Selection<'m> {
 
 #[cfg(test)]
 mod tests {
-    use bevy::prelude::{Mat3, Vec3};
+    use glam::{Mat3, Vec3};
 
     #[test]
     fn test_quad() {

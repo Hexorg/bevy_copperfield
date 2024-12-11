@@ -1,4 +1,3 @@
-use bevy::prelude::default;
 use itertools::Itertools;
 use smallvec::SmallVec;
 
@@ -19,17 +18,17 @@ pub fn delete(mesh: &mut HalfEdgeMesh, target: HalfEdgeId, is_fill: bool) -> Opt
     //              /   \
     //edge_previous/     \
     let edge = mesh.goto(target);
-    let edge_next = *edge.next();
-    let edge_previous = *edge.previous();
+    let edge_next = edge.next().halfedge();
+    let edge_previous = edge.previous().halfedge();
     let edge_face = edge.face();
     let edge_vertex = edge.vertex();
 
     let twin = edge.twin();
-    let twin_next = *twin.next();
-    let twin_previous = *twin.previous();
+    let twin_next = twin.next().halfedge();
+    let twin_previous = twin.previous().halfedge();
     let twin_face = twin.face();
     let twin_vertex = twin.vertex();
-    let twin = *twin;
+    let twin = twin.halfedge();
 
     // Reconnect the mesh to bypass removed edge+twin
     mesh[twin_previous].next = edge_next;
@@ -39,7 +38,7 @@ pub fn delete(mesh: &mut HalfEdgeMesh, target: HalfEdgeId, is_fill: bool) -> Opt
     mesh.halfedges.remove(target);
     mesh.halfedges.remove(twin);
 
-    let face_edges: StackVec<_> = mesh.goto(edge_next).iter_loop().map(|t| *t).collect();
+    let face_edges: StackVec<_> = mesh.goto(edge_next).iter_loop().map(|t| t.halfedge()).collect();
     for edge in face_edges {
         mesh[edge].face = if is_fill { edge_face } else { None }
     }
@@ -76,15 +75,15 @@ pub fn split(mesh: &mut HalfEdgeMesh, target: HalfEdgeId, factor: f32) -> Vertex
     //              /   \
     //edge_previous/     \
     let edge = mesh.goto(target);
-    let edge_next = *edge.next();
+    let edge_next = edge.next().halfedge();
     let edge_face = edge.face();
     let start_pos = edge.position();
     let twin = edge.twin();
-    let twin_previous = *twin.previous();
+    let twin_previous = twin.previous().halfedge();
     let twin_face = twin.face();
     let twin_vertex = twin.vertex();
     let end_pos = twin.position();
-    let twin = *twin;
+    let twin = twin.halfedge();
 
     let new_vertex_pos = start_pos.lerp(end_pos, factor);
     let new_vertex = mesh.new_vertex();
@@ -94,7 +93,7 @@ pub fn split(mesh: &mut HalfEdgeMesh, target: HalfEdgeId, factor: f32) -> Vertex
         .as_vertices_vec3_mut()
         .insert(new_vertex, new_vertex_pos);
     let new_edge = mesh.halfedges.insert(HalfEdge {
-        twin: default(),
+        twin: HalfEdgeId::default(),
         next: edge_next,
         vertex: new_vertex,
         face: edge_face,
@@ -120,21 +119,21 @@ pub fn split(mesh: &mut HalfEdgeMesh, target: HalfEdgeId, factor: f32) -> Vertex
 pub fn chamfer(mesh: &mut HalfEdgeMesh, target: HalfEdgeId, factor: f32) -> FaceId {
     let start_vertex = mesh.goto(target).vertex();
     let end_vertex = mesh.goto(target).twin().vertex();
-    let twin = *mesh.goto(target).twin();
+    let twin = mesh.goto(target).twin().halfedge();
 
     let start_outgoing_edges = mesh
         .goto(target)
         .iter_outgoing()
         .skip(1)
-        .map(|e| *e)
+        .map(|e| e.halfedge())
         .collect::<StackVec<_>>();
     let end_outgoing_edges = mesh
         .goto(twin)
         .twin()
         .next()
         .iter_outgoing()
-        .filter(|&e| *e != twin)
-        .map(|e| *e)
+        .filter(|&e| e.halfedge() != twin)
+        .map(|e| e.halfedge())
         .collect::<StackVec<_>>();
     // We need to cut all start and end outgoing edges except the target/twin and then join all new vertex pairs.
     let mut cut_vertices = start_outgoing_edges
@@ -165,9 +164,7 @@ pub fn chamfer(mesh: &mut HalfEdgeMesh, target: HalfEdgeId, factor: f32) -> Face
         cut_vertices[cut_vertices.len() - 1],
     ];
     println!("Last_face: {last_face:?}");
-    mesh.new_face(&last_face);
-
-    default()
+    mesh.new_face(&last_face)
 }
 
 #[cfg(test)]
@@ -187,7 +184,7 @@ mod tests {
         let to_be_deleted = mesh.new_face(&[vertices[0], vertices[1], vertices[2], vertices[3]]);
         mesh.new_face(&[vertices[1], vertices[4], vertices[5], vertices[2]]);
 
-        let target = *mesh.goto(vertices[2]).halfedge_to(vertices[1]);
+        let target = mesh.goto(vertices[2]).halfedge_to(vertices[1]).halfedge();
         let deleted_face = super::delete(&mut mesh, target, true);
         assert_eq!(mesh.count_face_edges(), 6);
         assert_eq!(mesh.count_islands(), 1);

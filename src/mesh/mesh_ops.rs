@@ -1,7 +1,6 @@
-use bevy::{
-    prelude::{Transform, Vec3},
-    utils::hashbrown::HashSet,
-};
+use bevy_transform::components::Transform;
+use glam::Vec3;
+use bevy_utils::hashbrown::HashSet;
 use itertools::Itertools;
 use slotmap::SecondaryMap;
 
@@ -54,7 +53,7 @@ pub fn subdivide(mesh: &mut HalfEdgeMesh) {
                 .face()
                 .map(|f| (face_points[f], 1.0))
                 .unwrap_or((Vec3::ZERO, 0.0));
-            let twin = *twin;
+            let twin = twin.halfedge();
             let vertex = edge_ops::split(mesh, edge, 0.5);
             split_vertices.insert(vertex);
             // let vertex = mesh.new_vertex();
@@ -84,8 +83,8 @@ pub fn subdivide(mesh: &mut HalfEdgeMesh) {
                 (
                     acc.0
                         + *edge_points
-                            .get(*i)
-                            .unwrap_or_else(|| edge_points.get(*i.next()).unwrap()),
+                            .get(i.halfedge())
+                            .unwrap_or_else(|| edge_points.get(i.next().halfedge()).unwrap()),
                     acc.1 + 1.0,
                 )
             });
@@ -115,7 +114,7 @@ pub fn subdivide(mesh: &mut HalfEdgeMesh) {
         for edge in mesh
             .goto(face)
             .iter_loop()
-            .map(|t| *t)
+            .map(|t| t.halfedge())
             .collect::<StackVec<_>>()
         {
             mesh[edge].face = None;
@@ -146,7 +145,7 @@ pub fn invert_normals(mesh: &mut HalfEdgeMesh) {
         let edges = mesh
             .goto(face)
             .iter_loop()
-            .map(|t| *t)
+            .map(|t| t.halfedge())
             .collect::<StackVec<_>>();
         let mut last_twin = mesh.halfedges[*edges.first().unwrap()].twin;
         for (&from, &to) in edges.iter().circular_tuple_windows() {

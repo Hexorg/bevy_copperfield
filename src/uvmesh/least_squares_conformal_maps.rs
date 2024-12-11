@@ -1,11 +1,7 @@
 use core::f32;
 
-// use argmin::core::{Executor, Operator, State};
-use bevy::{
-    math::Vec2,
-    prelude::Vec3,
-    utils::{hashbrown::HashMap, HashSet},
-};
+use glam::{Vec2, Vec3};
+use bevy_utils::{hashbrown::HashMap, HashSet};
 use itertools::Itertools;
 use slotmap::SecondaryMap;
 use sprs::{CsMatView, CsVec, CsVecView, TriMat};
@@ -208,7 +204,7 @@ fn lscm(mesh: &HalfEdgeMesh, chart: &HashSet<FaceId>) -> Vec<(HalfEdgeId, Vec2)>
                 } else {
                     pinned_uv[1]
                 };
-                (*e, uv)
+                (e.halfedge(), uv)
             })
         })
         .collect()
@@ -277,10 +273,10 @@ fn check_self_intersection(
             .goto(current_edge)
             .next()
             .iter_outgoing()
-            .find(|t| chart_boundary_edge(**t))
+            .find(|t| chart_boundary_edge(t.halfedge()))
         {
             let line_from = trace.last().unwrap().1;
-            let next_edge = *next_boundary;
+            let next_edge = next_boundary.halfedge();
             let line_to = map[&next_edge];
             if Some(&(next_edge, line_to)) == trace.first() {
                 break;
@@ -309,10 +305,10 @@ fn check_self_intersection(
                     if let Some(face) = mesh.goto(edge).face() {
                         if chart.insert(face) {
                             for edge in mesh.goto(face).iter_loop() {
-                                if !trace.iter().any(|(e, _)| *e == *edge)
+                                if !trace.iter().any(|(e, _)| *e == edge.halfedge())
                                     && edge.face().map(|f| !chart.contains(&f)).unwrap_or(false)
                                 {
-                                    insert(mesh, chart, trace, *edge);
+                                    insert(mesh, chart, trace, edge.halfedge());
                                 }
                             }
                         }

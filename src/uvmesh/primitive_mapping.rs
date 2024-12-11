@@ -1,6 +1,7 @@
 use core::f32;
 
-use bevy::prelude::{Transform, TransformPoint, Vec2, Vec3};
+use bevy_transform::{components::Transform, TransformPoint};
+use glam::{Vec2, Vec3};
 use slotmap::SecondaryMap;
 
 use crate::mesh::{
@@ -167,7 +168,7 @@ pub(crate) fn cube(mesh: &mut HalfEdgeMesh, transform: Transform) {
                 Vec2::ZERO
             };
 
-            uvmap.insert(*edge, uv);
+            uvmap.insert(edge.halfedge(), uv);
         }
     }
     mesh.add_attribute(crate::mesh::attributes::AttributeKind::UVs, uvmap);

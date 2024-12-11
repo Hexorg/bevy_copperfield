@@ -5,7 +5,7 @@ use bevy::{
     prelude::*,
 };
 use bevy_copperfield::{
-    mesh::{edge_ops, vertex_ops},
+    mesh::vertex_ops,
     mesh_builders::HalfEdgeMeshBuilder,
 };
 // use bevy_copperfield::{mesh::{vertex_ops::chamfer, VertexId}, mesh_builders::HalfEdgeMeshBuilder};
@@ -25,12 +25,11 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // circular base
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Circle::new(4.0)),
-        material: materials.add(Color::WHITE),
-        transform: Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-        ..default()
-    });
+    commands.spawn((
+        Mesh3d(meshes.add(Circle::new(4.0))),
+        MeshMaterial3d(materials.add(Color::WHITE)),
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+    ));
     // cube
     let mut cube = Cuboid::new(1.0, 1.0, 1.0).procgen();
     cube.is_smooth = false;
@@ -42,31 +41,28 @@ fn setup(
     cube.calculate_uvs();
     commands.spawn((
         Wireframe,
-        PbrBundle {
-            mesh: meshes.add(&cube),
-            material: materials.add(Color::srgb_u8(124, 144, 255)),
-            transform: Transform::from_xyz(0.0, 0.5, 0.0),
-            ..default()
-        },
+        Mesh3d(meshes.add(&cube)),
+        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+        Transform::from_xyz(0.0, 0.5, 0.0),
+
     ));
     // light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
+    commands.spawn((
+        PointLight {
             shadows_enabled: true,
             ..default()
         },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..default()
-    });
+        Transform::from_xyz(4.0, 8.0, 4.0),
+    ));
     // camera
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    });
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 }
 
 fn update(time: Res<Time>, mut camera: Query<&mut Transform, With<Camera>>) {
-    let (x, z) = time.elapsed_seconds().sin_cos();
+    let (x, z) = time.elapsed_secs().sin_cos();
     let pos = Vec3 { x, y: 0.45, z } * 10.0;
     let mut transform = camera.single_mut();
     transform.translation = pos;

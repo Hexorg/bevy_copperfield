@@ -4,17 +4,13 @@ use crate::uvmesh::{
 use attributes::{
     AttributeKind, AttributeStore, AttributeValues, Attributes, SelectionQueries, TraversalQueries,
 };
-use bevy::{
-    prelude::{default, Transform, Vec2, Vec3},
-    render::{
-        mesh::{self, Mesh as BevyMesh},
-        render_asset::RenderAssetUsages,
-    },
-    utils::hashbrown::HashSet,
-};
+use glam::{Vec2, Vec3};
+use bevy_transform::components::Transform;
+use bevy_utils::hashbrown::HashSet;
+use bevy_render::{mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology}, render_asset::RenderAssetUsages};
 use itertools::Itertools;
 use selection::Selection;
-use slotmap::{KeyData, SecondaryMap, SlotMap};
+use slotmap::{SecondaryMap, SlotMap};
 use smallvec::SmallVec;
 use traversal::{Traversal, VertexFlow};
 
@@ -38,6 +34,7 @@ pub enum MeshPosition {
     Face(FaceId),
 }
 
+
 /// Trait that lets us convert some value to a specific HalfEdgeId
 /// Useful to let rays target exact part of the mesh
 pub trait Targettable {
@@ -52,37 +49,38 @@ slotmap::new_key_type! {
     /// Index of a given [`HalfEdge`] in the staging slotmap
     /// [`HalfEdgeMesh`] assumes [`HalfEdgeId::default()`] is equivalent to a NULL pointer
     pub struct HalfEdgeId;
-}
-slotmap::new_key_type! {
+
     /// Index of a given [`Vertex`] in the staging slotmap
     pub struct VertexId;
-}
-slotmap::new_key_type! {
+
     /// Index of a given [`Face`] in the staging slotmap
     pub struct FaceId;
 }
 
 impl HalfEdgeId {
+    #[cfg(test)]
     #[allow(dead_code)]
     /// Lets the crate create custom Id. Only used for unit-tests
     pub(crate) fn from_ffi(ffi: u64) -> Self {
-        Self(KeyData::from_ffi(ffi))
+        Self(slotmap::KeyData::from_ffi(ffi))
     }
 }
 
 impl VertexId {
+    #[cfg(test)]
     #[allow(dead_code)]
     /// Lets the crate create custom Id. Only used for unit-tests
     pub(crate) fn from_ffi(ffi: u64) -> Self {
-        Self(KeyData::from_ffi(ffi))
+        Self(slotmap::KeyData::from_ffi(ffi))
     }
 }
 
 impl FaceId {
+    #[cfg(test)]
     #[allow(dead_code)]
     /// Lets the crate create custom Id. Only used for unit-tests
     pub fn from_ffi(ffi: u64) -> Self {
-        Self(KeyData::from_ffi(ffi))
+        Self(slotmap::KeyData::from_ffi(ffi))
     }
 }
 
@@ -135,7 +133,7 @@ impl Targettable for Vec3 {
                     });
             vertex.into()
         } else {
-            MeshPosition::HalfEdge(default())
+            MeshPosition::HalfEdge(HalfEdgeId::default())
         }
     }
 
@@ -154,7 +152,7 @@ impl Targettable for Vec3 {
                     });
             mesh[vertex].halfedge
         } else {
-            default()
+            HalfEdgeId::default()
         }
     }
 }
@@ -171,10 +169,10 @@ impl std::fmt::Debug for MeshPosition {
 
 impl MeshPosition {
     pub fn is_valid(&self, mesh: &HalfEdgeMesh) -> bool {
-        match self {
-            &MeshPosition::Vertex(vertex_id) => mesh.vertices.contains_key(vertex_id),
-            &MeshPosition::HalfEdge(half_edge_id) => mesh.halfedges.contains_key(half_edge_id),
-            &MeshPosition::Face(face_id) => mesh.faces.contains_key(face_id),
+        match *self {
+            MeshPosition::Vertex(vertex_id) => mesh.vertices.contains_key(vertex_id),
+            MeshPosition::HalfEdge(half_edge_id) => mesh.halfedges.contains_key(half_edge_id),
+            MeshPosition::Face(face_id) => mesh.faces.contains_key(face_id),
         }
     }
 }
@@ -229,10 +227,10 @@ pub struct HalfEdge {
 impl std::fmt::Debug for HalfEdge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut output = f.debug_struct("");
-        if self.twin != default() {
+        if self.twin != HalfEdgeId::default() {
             output.field("twin", &self.twin);
         }
-        if self.next != default() {
+        if self.next != HalfEdgeId::default() {
             output.field("next", &self.next);
         }
         output.field("vertex", &self.vertex);
@@ -344,7 +342,7 @@ impl HalfEdgeMesh {
 
     #[inline]
     pub fn new_vertex(&mut self) -> VertexId {
-        self.vertices.insert(default())
+        self.vertices.insert(Vertex::default())
     }
 
     #[inline]
@@ -377,27 +375,27 @@ impl HalfEdgeMesh {
         let edge_next = self.goto(edge_next);
         let edge_previous = self.goto(edge_previous);
         let twin_next = edge_previous.next_or_twin(); // twins will be used when both are boundary edges and we're just constructing a face
-        let twin_previous = *edge_next.previous_or_twin();
+        let twin_previous = edge_next.previous_or_twin().halfedge();
         let twin_vertex = edge_next.vertex();
         let edge_vertex = twin_next.vertex();
         let edge_face = edge_previous.face();
         let twin_face = twin_next.face();
 
-        let edge_next = *edge_next;
-        let edge_previous = *edge_previous;
-        let twin_next = *twin_next;
+        let edge_next = edge_next.halfedge();
+        let edge_previous = edge_previous.halfedge();
+        let twin_next = twin_next.halfedge();
         let (edge, twin) = self.new_edge(
             HalfEdge {
                 next: edge_next,
                 vertex: edge_vertex,
                 face: edge_face,
-                ..default()
+                ..HalfEdge::default()
             },
             HalfEdge {
                 next: twin_next,
                 vertex: twin_vertex,
                 face: twin_face,
-                ..default()
+                ..HalfEdge::default()
             },
         );
         if let Some(edge_previous) = self.halfedges.get_mut(edge_previous) {
@@ -415,7 +413,7 @@ impl HalfEdgeMesh {
     /// This method does not modify twin edges if they already exist
     pub fn new_face(&mut self, face: &[VertexId]) -> FaceId {
         let face_id = self.faces.insert(Face {
-            halfedge: default(),
+            halfedge: HalfEdgeId::default(),
         });
         let mut face_edges: StackVec<HalfEdgeId> = StackVec::new();
         let mut start_flows: StackVec<VertexFlow> = StackVec::new();
@@ -482,13 +480,13 @@ impl HalfEdgeMesh {
                             HalfEdge {
                                 vertex: start,
                                 face: self[start_flow.incoming].face,
-                                ..default()
+                                ..HalfEdge::default()
                             },
                             HalfEdge {
                                 next: start_flow.outgoing,
                                 vertex: end,
                                 face: self[start_flow.outgoing].face,
-                                ..default()
+                                ..HalfEdge::default()
                             },
                         );
                         #[cfg(test)]
@@ -504,12 +502,12 @@ impl HalfEdgeMesh {
                                 next: end_flow.outgoing,
                                 vertex: start,
                                 face: self[end_flow.outgoing].face,
-                                ..default()
+                                ..HalfEdge::default()
                             },
                             HalfEdge {
                                 vertex: end,
                                 face: self[end_flow.incoming].face,
-                                ..default()
+                                ..HalfEdge::default()
                             },
                         );
                         self[end_flow.incoming].next = twin;
@@ -527,11 +525,11 @@ impl HalfEdgeMesh {
                         let (edge, twin) = self.new_edge(
                             HalfEdge {
                                 vertex: start,
-                                ..default()
+                                ..HalfEdge::default()
                             },
                             HalfEdge {
                                 vertex: end,
-                                ..default()
+                                ..HalfEdge::default()
                             },
                         );
                         self[start].halfedge = edge;
@@ -646,13 +644,9 @@ impl HalfEdgeMesh {
                 }
             }
         }
-        loop {
-            if let Some(&init_vertex) = unvisited_vertices.iter().next() {
-                island_count += 1;
-                remove_visited(&mut unvisited_vertices, self, init_vertex);
-            } else {
-                break;
-            }
+        while let Some(&init_vertex) = unvisited_vertices.iter().next() {
+            island_count += 1;
+            remove_visited(&mut unvisited_vertices, self, init_vertex);
         }
 
         island_count
@@ -691,10 +685,10 @@ impl HalfEdgeMesh {
         let mut vertex_map: SecondaryMap<VertexId, VertexId> = SecondaryMap::new();
 
         for face_id in other.face_keys() {
-            face_map.insert(face_id, self.faces.insert(default()));
+            face_map.insert(face_id, self.faces.insert(Face::default()));
         }
         for vertex_id in other.vertex_keys() {
-            vertex_map.insert(vertex_id, self.vertices.insert(default()));
+            vertex_map.insert(vertex_id, self.vertices.insert(Vertex::default()));
         }
         for edge_id in other.edge_keys() {
             let mut halfedge = other.halfedges[edge_id];
@@ -702,9 +696,7 @@ impl HalfEdgeMesh {
             halfedge.face.iter_mut().for_each(|f| *f = face_map[*f]);
             let new_id = self.halfedges.insert(halfedge);
             self.vertices[halfedge.vertex].halfedge = new_id;
-            halfedge.face.map(|f| {
-                self.faces[f].halfedge = new_id;
-            });
+            if let Some(f) = halfedge.face { self.faces[f].halfedge = new_id; }
             edge_map.insert(edge_id, new_id);
         }
         for edge_id in other.edge_keys() {
@@ -876,7 +868,7 @@ impl From<&HalfEdgeMesh> for BevyMesh {
                     if t.is_smooth_normals() {
                         normals.push(
                             t.select_vertex()
-                                .to_face_selection()
+                                .select_faces()
                                 .calculate_normal()
                                 .unwrap()
                                 .to_array(),
@@ -892,9 +884,9 @@ impl From<&HalfEdgeMesh> for BevyMesh {
             }
         }
 
-        let indices = mesh::Indices::U32(indices);
+        let indices = Indices::U32(indices);
         BevyMesh::new(
-            mesh::PrimitiveTopology::TriangleList,
+            PrimitiveTopology::TriangleList,
             RenderAssetUsages::default(),
         )
         .with_inserted_attribute(BevyMesh::ATTRIBUTE_POSITION, positions)
@@ -906,10 +898,9 @@ impl From<&HalfEdgeMesh> for BevyMesh {
 
 #[cfg(test)]
 mod tests {
-    use bevy::{
-        math::Vec3,
-        prelude::{Cuboid, MeshBuilder, Meshable},
-    };
+    use bevy_math::prelude::Cuboid;
+    use bevy_render::mesh::{MeshBuilder, Meshable};
+    use glam::Vec3;
     use slotmap::{KeyData, SecondaryMap};
     use smallvec::SmallVec;
 
@@ -928,11 +919,11 @@ mod tests {
         assert_eq!(mesh.halfedges.len(), 6);
         assert_eq!(
             HalfEdgeId(KeyData::from_ffi(5)),
-            *mesh.goto(HalfEdgeId(KeyData::from_ffi(1))).previous()
+            mesh.goto(HalfEdgeId(KeyData::from_ffi(1))).previous().halfedge()
         );
         assert_eq!(
             HalfEdgeId(KeyData::from_ffi(4)),
-            *mesh.goto(HalfEdgeId(KeyData::from_ffi(2))).previous()
+            mesh.goto(HalfEdgeId(KeyData::from_ffi(2))).previous().halfedge()
         );
     }
 
