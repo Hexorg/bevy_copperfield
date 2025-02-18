@@ -23,18 +23,18 @@ lto = "thin"
 opt-level = 3
 
 [dependencies]
-glam = "0.29"
+glam = "0.30"
 bevy_utils = "0.15"
 bevy_transform = "0.15"
 bevy_math = "0.15"
 bevy_render = "0.15"
 earcutr = "0.4.3"
-itertools = "0.13.0"
+itertools = "0.14.0"
 line_drawing = "1.0.0"
 noise = "0.9.0"
 slotmap = "1.0.7"
-smallvec = "1.13.2"
-sprs = "0.11.2"
+smallvec = "1.14.0"
+sprs = "0.11.3"
 
 [dev-dependencies]
 bevy = {version = "0.15", features=["jpeg"]}
